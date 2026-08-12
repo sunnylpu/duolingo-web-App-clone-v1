@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.shared.database import Base, get_db
+from app.shared.database import Base, get_db, init_db
 
 # Use in-memory SQLite database for fast, isolated testing
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -21,7 +21,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="function")
 def db_session():
-    Base.metadata.create_all(bind=engine)
+    init_db(engine)
     session = TestingSessionLocal()
     try:
         yield session

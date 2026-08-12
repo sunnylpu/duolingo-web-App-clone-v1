@@ -1,0 +1,38 @@
+ACHIEVEMENTS = [
+    {
+        "id": "ach_first_lesson",
+        "code": "FIRST_LESSON",
+        "name": "First Steps",
+        "description": "Complete your very first language lesson.",
+        "icon": "footsteps",
+        "requirement_type": "lessons_completed",
+        "requirement_value": 1,
+    },
+    {
+        "id": "ach_100_xp",
+        "code": "100_XP",
+        "name": "Century Scholar",
+        "description": "Earn a total of 100 XP.",
+        "icon": "trophy",
+        "requirement_type": "total_xp",
+        "requirement_value": 100,
+    },
+    {
+        "id": "ach_500_xp",
+        "code": "500_XP",
+        "name": "XP Master",
+        "description": "Earn a total of 500 XP.",
+        "icon": "star",
+        "requirement_type": "total_xp",
+        "requirement_value": 500,
+    },
+    {
+        "id": "ach_7_day_streak",
+        "code": "7_DAY_STREAK",
+        "name": "Week Warrior",
+        "description": "Maintain a learning streak for 7 consecutive days.",
+        "icon": "fire",
+        "requirement_type": "streak",
+        "requirement_value": 7,
+    },
+]

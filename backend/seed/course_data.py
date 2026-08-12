@@ -1,0 +1,312 @@
+COURSE_DATA = {
+    "id": "crs_spanish",
+    "name": "Spanish",
+    "code": "es",
+    "source_language": "en",
+    "target_language": "es",
+    "description": "Learn Spanish from scratch with interactive lessons and vocabulary builder.",
+    "units": [
+        # Unit 1: Greetings & Basics
+        {
+            "id": "unit_01",
+            "title": "Unit 1: Greetings & Introduction",
+            "description": "Master basic greetings, polite expressions, and everyday introductions.",
+            "order_index": 1,
+            "skills": [
+                {
+                    "id": "skill_greetings",
+                    "title": "Greetings",
+                    "description": "Say hello, goodbye, and introduce yourself.",
+                    "order_index": 1,
+                    "xp_reward": 15,
+                    "prerequisite_skill_id": None,
+                    "lessons": [
+                        {
+                            "id": "lsn_greetings_1",
+                            "title": "Basic Hello",
+                            "description": "Learn common greetings.",
+                            "order_index": 1,
+                            "xp_reward": 10,
+                            "estimated_minutes": 3,
+                            "exercises": [
+                                {
+                                    "id": "ex_gr1_1",
+                                    "type": "multiple_choice",
+                                    "prompt": "What does 'hola' mean?",
+                                    "correct_answer": "Hello",
+                                    "data": {"options": ["Hello", "Goodbye", "Thanks", "Please"]},
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_gr1_2",
+                                    "type": "translate",
+                                    "prompt": "Translate: 'Buenos días'",
+                                    "correct_answer": "Good morning",
+                                    "data": {"source": "Buenos días", "target_lang": "en"},
+                                    "order_index": 2,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_gr1_3",
+                                    "type": "match_pairs",
+                                    "prompt": "Match the Spanish and English pairs:",
+                                    "correct_answer": "Hola:Hello,Gracias:Thank you,Adiós:Goodbye",
+                                    "data": {
+                                        "pairs": [
+                                            {"left": "Hola", "right": "Hello"},
+                                            {"left": "Gracias", "right": "Thank you"},
+                                            {"left": "Adiós", "right": "Goodbye"},
+                                        ]
+                                    },
+                                    "order_index": 3,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                        {
+                            "id": "lsn_greetings_2",
+                            "title": "Polite Phrases",
+                            "description": "Say please, thank you, and excuse me.",
+                            "order_index": 2,
+                            "xp_reward": 10,
+                            "estimated_minutes": 4,
+                            "exercises": [
+                                {
+                                    "id": "ex_gr2_1",
+                                    "type": "word_bank",
+                                    "prompt": "Translate to Spanish: 'Thank you very much'",
+                                    "correct_answer": "Muchas gracias",
+                                    "data": {"words": ["Muchas", "gracias", "de", "nada", "por", "favor"]},
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_gr2_2",
+                                    "type": "type_answer",
+                                    "prompt": "Type in Spanish: 'Please'",
+                                    "correct_answer": "Por favor",
+                                    "data": {"hint": "P__ f____"},
+                                    "order_index": 2,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "id": "skill_basics",
+                    "title": "Basics",
+                    "description": "Essential nouns, pronouns, and basic sentences.",
+                    "order_index": 2,
+                    "xp_reward": 20,
+                    "prerequisite_skill_id": "skill_greetings",
+                    "lessons": [
+                        {
+                            "id": "lsn_basics_1",
+                            "title": "Pronouns & Verbs",
+                            "description": "Learn Yo, Tú, and basic verbs.",
+                            "order_index": 1,
+                            "xp_reward": 10,
+                            "estimated_minutes": 5,
+                            "exercises": [
+                                {
+                                    "id": "ex_bas1_1",
+                                    "type": "fill_blank",
+                                    "prompt": "Yo ___ agua.",
+                                    "correct_answer": "bebo",
+                                    "data": {
+                                        "sentence": "Yo ___ agua.",
+                                        "options": ["bebo", "como", "hablo"],
+                                    },
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_bas1_2",
+                                    "type": "word_bank",
+                                    "prompt": "Translate: 'I am a boy'",
+                                    "correct_answer": "Yo soy un niño",
+                                    "data": {"words": ["Yo", "soy", "un", "niño", "una", "niña"]},
+                                    "order_index": 2,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                        {
+                            "id": "lsn_basics_2",
+                            "title": "Simple Sentences",
+                            "description": "Form complete thoughts.",
+                            "order_index": 2,
+                            "xp_reward": 10,
+                            "estimated_minutes": 5,
+                            "exercises": [
+                                {
+                                    "id": "ex_bas2_1",
+                                    "type": "translate",
+                                    "prompt": "Translate: 'Tú eres una mujer'",
+                                    "correct_answer": "You are a woman",
+                                    "data": {"source": "Tú eres una mujer"},
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        # Unit 2: Food & Family
+        {
+            "id": "unit_02",
+            "title": "Unit 2: Food & Family",
+            "description": "Order food in restaurants and talk about your family members.",
+            "order_index": 2,
+            "skills": [
+                {
+                    "id": "skill_food",
+                    "title": "Food & Drinks",
+                    "description": "Vocabulary for meals, fruits, and drinks.",
+                    "order_index": 1,
+                    "xp_reward": 20,
+                    "prerequisite_skill_id": "skill_basics",
+                    "lessons": [
+                        {
+                            "id": "lsn_food_1",
+                            "title": "At the Table",
+                            "description": "Bread, water, milk, and apple.",
+                            "order_index": 1,
+                            "xp_reward": 10,
+                            "estimated_minutes": 4,
+                            "exercises": [
+                                {
+                                    "id": "ex_food1_1",
+                                    "type": "multiple_choice",
+                                    "prompt": "Which of these means 'apple'?",
+                                    "correct_answer": "la manzana",
+                                    "data": {"options": ["la manzana", "el pan", "la leche", "el agua"]},
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_food1_2",
+                                    "type": "fill_blank",
+                                    "prompt": "Ella come ___.",
+                                    "correct_answer": "pan",
+                                    "data": {
+                                        "sentence": "Ella come ___.",
+                                        "options": ["pan", "agua", "leche"],
+                                    },
+                                    "order_index": 2,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "id": "skill_family",
+                    "title": "Family Members",
+                    "description": "Mother, father, brother, sister.",
+                    "order_index": 2,
+                    "xp_reward": 20,
+                    "prerequisite_skill_id": "skill_food",
+                    "lessons": [
+                        {
+                            "id": "lsn_family_1",
+                            "title": "Parents & Siblings",
+                            "description": "Talk about parents.",
+                            "order_index": 1,
+                            "xp_reward": 10,
+                            "estimated_minutes": 4,
+                            "exercises": [
+                                {
+                                    "id": "ex_fam1_1",
+                                    "type": "match_pairs",
+                                    "prompt": "Match family terms:",
+                                    "correct_answer": "Padre:Father,Madre:Mother,Hermano:Brother",
+                                    "data": {
+                                        "pairs": [
+                                            {"left": "Padre", "right": "Father"},
+                                            {"left": "Madre", "right": "Mother"},
+                                            {"left": "Hermano", "right": "Brother"},
+                                        ]
+                                    },
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        # Unit 3: Directions & Travel
+        {
+            "id": "unit_03",
+            "title": "Unit 3: Directions & Travel",
+            "description": "Navigate cities, ask for directions, and buy travel tickets.",
+            "order_index": 3,
+            "skills": [
+                {
+                    "id": "skill_directions",
+                    "title": "Directions",
+                    "description": "Left, right, straight ahead, street.",
+                    "order_index": 1,
+                    "xp_reward": 25,
+                    "prerequisite_skill_id": "skill_family",
+                    "lessons": [
+                        {
+                            "id": "lsn_directions_1",
+                            "title": "Asking Where",
+                            "description": "Where is the hotel?",
+                            "order_index": 1,
+                            "xp_reward": 10,
+                            "estimated_minutes": 5,
+                            "exercises": [
+                                {
+                                    "id": "ex_dir1_1",
+                                    "type": "type_answer",
+                                    "prompt": "Type in Spanish: 'Where is the hotel?'",
+                                    "correct_answer": "¿Dónde está el hotel?",
+                                    "data": {"hint": "¿D____ e___ e_ h____?"},
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "id": "skill_travel",
+                    "title": "Travel Basics",
+                    "description": "Airport, bus station, ticket.",
+                    "order_index": 2,
+                    "xp_reward": 25,
+                    "prerequisite_skill_id": "skill_directions",
+                    "lessons": [
+                        {
+                            "id": "lsn_travel_1",
+                            "title": "At the Airport",
+                            "description": "Passport, ticket, and luggage.",
+                            "order_index": 1,
+                            "xp_reward": 10,
+                            "estimated_minutes": 5,
+                            "exercises": [
+                                {
+                                    "id": "ex_trv1_1",
+                                    "type": "word_bank",
+                                    "prompt": "Translate: 'My passport, please'",
+                                    "correct_answer": "Mi pasaporte, por favor",
+                                    "data": {"words": ["Mi", "pasaporte", "por", "favor", "boleto"]},
+                                    "order_index": 1,
+                                    "xp_reward": 5,
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}

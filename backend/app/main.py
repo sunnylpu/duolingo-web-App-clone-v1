@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.config import settings
-from app.shared.database import Base, engine
+from app.shared.database import init_db
 from app.shared.logging import setup_logging
 from app.shared.middleware import setup_middleware
 from app.shared.errors import setup_exception_handlers
@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown events lifecycle manager."""
     logger.info(f"Starting {settings.APP_NAME} service...")
     # Initialize database tables for development
-    Base.metadata.create_all(bind=engine)
+    init_db()
     logger.info("Database schemas initialized.")
     yield
     logger.info(f"Shutting down {settings.APP_NAME} service...")
