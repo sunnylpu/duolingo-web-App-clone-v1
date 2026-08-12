@@ -1,6 +1,8 @@
 from typing import List, Optional
 from app.modules.user.repository import UserRepository
 from app.modules.user.models import UserModel
+from app.modules.user.schemas import UserResponse, UserStatsResponse
+from app.shared.errors import NotFoundError
 
 
 class UserService:
@@ -9,8 +11,10 @@ class UserService:
     def __init__(self, repository: UserRepository):
         self.repository = repository
 
-    def list_users(self) -> List[UserModel]:
-        return self.repository.get_all()
+    def get_me(self, user: UserModel) -> UserResponse:
+        return UserResponse.model_validate(user)
 
-    def get_user_profile(self, user_id: str) -> Optional[UserModel]:
-        return self.repository.get_by_id(user_id)
+    def get_me_stats(self, user: UserModel) -> UserStatsResponse:
+        if not user.stats:
+            raise NotFoundError("User statistics not found for current user.")
+        return UserStatsResponse.model_validate(user.stats)

@@ -1,15 +1,20 @@
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
 
-class LeaderboardEntry(BaseModel):
+class LeaderboardEntryResponse(BaseModel):
+    rank: int
     user_id: str
     username: str
-    weekly_xp: int
-    rank: int
+    display_name: str
+    avatar: Optional[str] = None
+    xp: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LeaderboardResponse(BaseModel):
-    league_name: str
-    entries: list[LeaderboardEntry]
+    period: str
+    entries: List[LeaderboardEntryResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

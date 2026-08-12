@@ -17,7 +17,17 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: str
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserStatsResponse(BaseModel):
+    total_xp: int
+    current_streak: int
+    longest_streak: int
+    hearts: int
+    gems: int
+    daily_goal_xp: int
+    daily_xp: int
 
     model_config = ConfigDict(from_attributes=True)

@@ -1,13 +1,19 @@
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
 
-class ProgressBase(BaseModel):
-    user_id: str
-    course_id: str
-    completed_lessons: int
+class SkillProgressSummary(BaseModel):
+    skill_id: str
+    status: str
+    completion_percent: float
+    crown_level: int
+    lessons_completed: int
+    xp_earned: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
-class ProgressResponse(ProgressBase):
-    id: str
+class ProgressResponse(BaseModel):
+    skills: List[SkillProgressSummary] = []
 
     model_config = ConfigDict(from_attributes=True)

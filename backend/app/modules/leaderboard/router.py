@@ -1,22 +1,20 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.shared.database import get_db
-from app.modules.leaderboard.repository import LeaderboardRepository
 from app.modules.leaderboard.service import LeaderboardService
 from app.modules.leaderboard.schemas import LeaderboardResponse
 
-router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
+router = APIRouter(prefix="/leaderboard", tags=["Leaderboard"])
 
 
 def get_leaderboard_service(db: Session = Depends(get_db)) -> LeaderboardService:
-    repository = LeaderboardRepository(db)
-    return LeaderboardService(repository)
+    return LeaderboardService(db)
 
 
-@router.get("", response_model=LeaderboardResponse)
+@router.get("", response_model=LeaderboardResponse, summary="Get leaderboard standings")
 def get_leaderboard(
-    league: str = "Bronze",
+    period: str = Query("weekly", description="Leaderboard period: weekly, monthly, all_time"),
     service: LeaderboardService = Depends(get_leaderboard_service),
 ):
-    """Retrieve leaderboard standings (scaffolding)."""
-    return service.get_leaderboard(league_name=league)
+    """Return ranked leaderboard standings for the specified period."""
+    return service.get_leaderboard(period=period)
