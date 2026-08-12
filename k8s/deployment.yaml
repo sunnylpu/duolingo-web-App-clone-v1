@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: duolingo-backend
+  labels:
+    app: duolingo-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: duolingo-backend
+  template:
+    metadata:
+      labels:
+        app: duolingo-backend
+    spec:
+      containers:
+      - name: backend
+        image: duolingo-backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: APP_NAME
+          value: "Duolingo Clone API"
+        - name: APP_ENV
+          value: "production"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: database-url
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: duolingo-frontend
+  labels:
+    app: duolingo-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: duolingo-frontend
+  template:
+    metadata:
+      labels:
+        app: duolingo-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: duolingo-frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://duolingo-backend-service:8000/api/v1"
