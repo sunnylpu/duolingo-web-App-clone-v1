@@ -60,6 +60,7 @@ class AnswerSubmissionResponse(BaseModel):
     is_correct: bool
     correct_answer: str
     hearts_lost: int = 0
+    hearts_remaining: int = 5
     attempt_completed: bool = False
 
     model_config = ConfigDict(from_attributes=True)

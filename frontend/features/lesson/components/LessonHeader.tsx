@@ -1,11 +1,12 @@
 import React from "react";
-import { ProgressBar } from "@/components/ui/ProgressBar";
 import { UserStats } from "@/types";
+import { HeartDisplay } from "@/components/gamification/HeartDisplay";
 
 interface LessonHeaderProps {
   currentIndex: number;
   totalExercises: number;
   stats?: UserStats | null;
+  heartsOverride?: number | null;
   onExit: () => void;
 }
 
@@ -13,35 +14,35 @@ export const LessonHeader: React.FC<LessonHeaderProps> = ({
   currentIndex,
   totalExercises,
   stats,
+  heartsOverride = null,
   onExit,
 }) => {
-  const percentage =
-    totalExercises > 0
-      ? Math.round(((currentIndex + 1) / totalExercises) * 100)
-      : 0;
+  const progressPercent = totalExercises > 0 ? (currentIndex / totalExercises) * 100 : 0;
+  const currentHearts = heartsOverride !== null ? heartsOverride : stats?.hearts ?? 5;
 
   return (
-    <header className="sticky top-0 z-30 bg-[#131f24] border-b border-[#37464f] px-4 py-3">
-      <div className="max-w-2xl mx-auto flex items-center gap-4">
-        {/* Exit Button */}
+    <header className="fixed top-0 left-0 right-0 z-30 bg-[#131f24] border-b border-[#37464f]/40 px-4 py-3">
+      <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
+        {/* Exit Button (×) */}
         <button
+          type="button"
           onClick={onExit}
-          className="text-gray-400 hover:text-white font-black text-2xl px-2 py-1 transition-colors leading-none"
+          className="text-gray-400 hover:text-white font-black text-2xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#182830] transition-colors"
           aria-label="Exit lesson"
         >
-          ×
+          ✕
         </button>
 
-        {/* Progress Bar & Counter */}
-        <div className="flex-1 space-y-1">
-          <ProgressBar value={percentage} height="h-3" color="bg-[#58cc02]" />
+        {/* Progress Bar Container */}
+        <div className="flex-1 h-3.5 bg-[#182830] rounded-full overflow-hidden border border-[#37464f] p-0.5">
+          <div
+            className="h-full bg-[#58cc02] rounded-full transition-all duration-500 ease-out"
+            style={{ width: `${progressPercent}%` }}
+          />
         </div>
 
-        {/* Hearts Display (Display-only) */}
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-[#182830] border border-[#ff4b4b]/30 rounded-xl text-[#ff4b4b] font-black text-sm">
-          <span>❤️</span>
-          <span>{stats ? stats.hearts : 5}</span>
-        </div>
+        {/* Hearts Display Component */}
+        <HeartDisplay hearts={currentHearts} maxHearts={5} />
       </div>
     </header>
   );

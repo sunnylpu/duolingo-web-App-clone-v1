@@ -39,6 +39,10 @@ export function useLessonSession(lesson: LessonDetail | null) {
     }
   };
 
+  const triggerOutOfHearts = () => {
+    setStep("out_of_hearts");
+  };
+
   const openExitModal = () => setIsExitModalOpen(true);
   const closeExitModal = () => setIsExitModalOpen(false);
 
@@ -53,6 +57,7 @@ export function useLessonSession(lesson: LessonDetail | null) {
     startError,
     startSession,
     nextExercise,
+    triggerOutOfHearts,
     openExitModal,
     closeExitModal,
   };

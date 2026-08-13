@@ -13,6 +13,7 @@ export interface AnswerSubmissionResult {
   is_correct: boolean;
   correct_answer: string;
   hearts_lost: number;
+  hearts_remaining: number;
   attempt_completed: boolean;
 }
 

@@ -2,13 +2,14 @@ import re
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.modules.lesson.repository import LessonRepository
+from app.modules.gamification.service import GamificationService
 from app.modules.lesson.schemas import (
     LessonDetailResponse,
     LessonStartResponse,
     AnswerSubmissionResponse,
 )
 from app.modules.user.models import UserModel
-from app.shared.errors import NotFoundError, ValidationError
+from app.shared.errors import NotFoundError, ValidationError, ConflictError
 
 
 class LessonService:
@@ -17,6 +18,7 @@ class LessonService:
     def __init__(self, db: Session):
         self.db = db
         self.repository = LessonRepository(db)
+        self.gamification_service = GamificationService(db)
 
     def normalize_answer(self, answer: str, exercise_type: str) -> str:
         if not answer:
@@ -104,34 +106,57 @@ class LessonService:
         if attempt.status != "started":
             raise ValidationError("LESSON_ATTEMPT_NOT_ACTIVE")
 
-        # 6. Check duplicate answer submission
+        # 6. Check duplicate answer submission (idempotency safety)
         existing_ex_attempt = self.repository.get_exercise_attempt(
             lesson_attempt_id=attempt_id, exercise_id=exercise_id
         )
         if existing_ex_attempt:
-            raise ValidationError("EXERCISE_ALREADY_ANSWERED")
+            user_stats = current_user.stats
+            hearts_rem = user_stats.hearts if user_stats else 5
+            return AnswerSubmissionResponse(
+                exercise_id=exercise_id,
+                is_correct=existing_ex_attempt.is_correct,
+                correct_answer=exercise.correct_answer,
+                hearts_lost=0,  # Duplicate submission does not deduct a second heart
+                hearts_remaining=hearts_rem,
+                attempt_completed=False,
+            )
 
-        # 7. Answer normalization & comparison
+        # 7. Zero hearts check (reject answer if user has no hearts remaining)
+        current_hearts = current_user.stats.hearts if current_user.stats else 5
+        if current_hearts <= 0:
+            raise ConflictError("You have no hearts remaining.", code="OUT_OF_HEARTS")
+
+        # 8. Answer normalization & comparison
         norm_submission = self.normalize_answer(user_answer, exercise.type)
         norm_correct = self.normalize_answer(exercise.correct_answer, exercise.type)
         is_correct = norm_submission == norm_correct
 
-        # 8. Transactional persistence
+        # 9. Transactional persistence & heart deduction
         try:
+            hearts_lost = 0
+            hearts_remaining = current_hearts
+
+            if not is_correct:
+                hearts_lost = 1
+                hearts_remaining = self.gamification_service.deduct_heart(current_user.id)
+
             self.repository.create_exercise_attempt(
                 lesson_attempt_id=attempt_id,
                 exercise_id=exercise_id,
                 answer=user_answer,
                 is_correct=is_correct,
-                hearts_lost=0,
+                hearts_lost=hearts_lost,
             )
+
             self.db.commit()
 
             return AnswerSubmissionResponse(
                 exercise_id=exercise_id,
                 is_correct=is_correct,
                 correct_answer=exercise.correct_answer,
-                hearts_lost=0,
+                hearts_lost=hearts_lost,
+                hearts_remaining=hearts_remaining,
                 attempt_completed=False,
             )
         except Exception:

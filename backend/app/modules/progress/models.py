@@ -118,6 +118,10 @@ class ExerciseAttemptModel(Base):
     hearts_lost = Column(Integer, default=0, nullable=False)
     answered_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+    __table_args__ = (
+        UniqueConstraint("lesson_attempt_id", "exercise_id", name="uq_lesson_attempt_exercise"),
+    )
+
     # Relationships
     lesson_attempt = relationship("LessonAttemptModel", back_populates="exercise_attempts")
     exercise = relationship("ExerciseModel", back_populates="attempts")

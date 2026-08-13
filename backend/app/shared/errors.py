@@ -71,6 +71,16 @@ class ForbiddenError(AppException):
         )
 
 
+class ConflictError(AppException):
+    def __init__(self, message: str = "Conflict", code: str = "CONFLICT", details: Optional[Any] = None):
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status.HTTP_409_CONFLICT,
+            details=details,
+        )
+
+
 def setup_exception_handlers(app: FastAPI) -> None:
     """Register custom exception handlers with FastAPI application."""
 

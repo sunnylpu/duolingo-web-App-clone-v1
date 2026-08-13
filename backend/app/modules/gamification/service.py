@@ -12,7 +12,7 @@ from app.shared.errors import NotFoundError
 
 
 class GamificationService:
-    """Contains business logic for Gamification metrics and Achievements."""
+    """Contains business logic for Gamification metrics, Hearts, and Achievements."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -27,6 +27,16 @@ class GamificationService:
             raise NotFoundError("Gamification statistics not found.")
 
         return GamificationStatsResponse.model_validate(stats)
+
+    def deduct_heart(self, user_id: str) -> int:
+        """Deducts 1 heart for an incorrect answer, ensuring hearts never drop below 0."""
+        stats = self.repository.get_user_stats(user_id)
+        if not stats:
+            raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
+
+        stats.hearts = max(stats.hearts - 1, 0)
+        self.db.flush()
+        return stats.hearts
 
     def get_all_achievements(self) -> List[AchievementResponse]:
         achievements = self.db.query(AchievementModel).all()

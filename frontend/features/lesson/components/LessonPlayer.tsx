@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { LessonDetail, UserStats } from "@/types";
 import { LessonHeader } from "./LessonHeader";
 import { LessonProgress } from "./LessonProgress";
 import { ExerciseRenderer } from "./ExerciseRenderer";
 import { ExerciseFeedback } from "./ExerciseFeedback";
 import { ExitConfirmationModal } from "./ExitConfirmationModal";
+import { OutOfHeartsModal } from "./OutOfHeartsModal";
 import { useLessonSession } from "../hooks/useLessonSession";
 import { useExerciseAnswer } from "../hooks/useExerciseAnswer";
 import { LessonIntro } from "./LessonIntro";
@@ -32,9 +33,12 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
     isStarting,
     startSession,
     nextExercise,
+    triggerOutOfHearts,
     openExitModal,
     closeExitModal,
   } = useLessonSession(lesson);
+
+  const [heartsRemaining, setHeartsRemaining] = useState<number>(stats?.hearts ?? 5);
 
   const attemptId = attempt?.attempt_id || null;
 
@@ -53,12 +57,27 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
     resetAnswer();
   }, [currentExerciseIndex]);
 
+  // Update hearts state when backend returns updated hearts_remaining
+  useEffect(() => {
+    if (result && typeof result.hearts_remaining === "number") {
+      setHeartsRemaining(result.hearts_remaining);
+    }
+  }, [result]);
+
   const handleCheck = async () => {
     if (!currentExercise) return;
-    await submitAnswer(currentExercise.id);
+    const res = await submitAnswer(currentExercise.id);
+    if (res && res.hearts_remaining === 0 && !res.is_correct) {
+      // User ran out of hearts on this answer
+      triggerOutOfHearts();
+    }
   };
 
   const handleContinue = () => {
+    if (heartsRemaining <= 0) {
+      triggerOutOfHearts();
+      return;
+    }
     resetAnswer();
     nextExercise();
   };
@@ -106,11 +125,12 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
 
   return (
     <div className="min-h-screen bg-[#131f24] flex flex-col justify-between pb-28">
-      {/* Header */}
+      {/* Header with real-time hearts */}
       <LessonHeader
         currentIndex={currentExerciseIndex}
         totalExercises={totalExercises}
         stats={stats}
+        heartsOverride={heartsRemaining}
         onExit={openExitModal}
       />
 
@@ -125,7 +145,7 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
           selectedAnswer={selectedAnswer}
           onSelectAnswer={setSelectedAnswer}
           onSubmit={handleCheck}
-          disabled={isSubmitting || isAnswered}
+          disabled={isSubmitting || isAnswered || heartsRemaining <= 0}
           feedbackStatus={feedbackState}
         />
       </main>
@@ -134,8 +154,10 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
       <ExerciseFeedback
         status={feedbackState}
         correctAnswer={result?.correct_answer}
+        heartsLost={result?.hearts_lost ?? 0}
+        heartsRemaining={heartsRemaining}
         isSubmitting={isSubmitting}
-        canCheck={Boolean(selectedAnswer.trim())}
+        canCheck={Boolean(selectedAnswer.trim()) && heartsRemaining > 0}
         onCheck={handleCheck}
         onContinue={handleContinue}
       />
@@ -145,6 +167,14 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
         isOpen={isExitModalOpen}
         onStay={closeExitModal}
         onLeave={() => {
+          window.location.href = "/learn";
+        }}
+      />
+
+      {/* Out of Hearts Modal */}
+      <OutOfHeartsModal
+        isOpen={step === "out_of_hearts"}
+        onExit={() => {
           window.location.href = "/learn";
         }}
       />
