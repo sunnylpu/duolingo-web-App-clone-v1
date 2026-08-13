@@ -1,12 +1,22 @@
-from typing import List
+from typing import List, Optional, Dict, Any
+from datetime import date, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.modules.leaderboard.repository import LeaderboardRepository
-from app.modules.leaderboard.schemas import LeaderboardResponse, LeaderboardEntryResponse
-from app.shared.errors import ValidationError
+from app.modules.user.models import UserModel
+from app.modules.gamification.models import UserStatsModel
+from app.modules.progress.models import DailyActivityModel
+from app.modules.gamification.service import get_current_activity_date
+from app.modules.leaderboard.schemas import (
+    LeaderboardResponse,
+    LeaderboardEntryResponse,
+    UserRankResponse,
+)
+from app.shared.errors import ValidationError, NotFoundError
 
 
 class LeaderboardService:
-    """Contains business logic for Leaderboard leagues and period standings."""
+    """Contains business logic for Leaderboard rankings, period standings, and competition ranking."""
 
     VALID_PERIODS = {"weekly", "monthly", "all_time"}
 
@@ -14,27 +24,146 @@ class LeaderboardService:
         self.db = db
         self.repository = LeaderboardRepository(db)
 
-    def get_leaderboard(self, period: str = "weekly") -> LeaderboardResponse:
+    def _calculate_ranked_entries(
+        self, period: str, current_user_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Calculates ranked entries based on period activity or cumulative XP using
+        Standard Competition Ranking (1224 rank).
+        """
+        today = get_current_activity_date()
+
+        # Fetch all active users in the platform
+        all_users = self.db.query(UserModel).all()
+        user_map = {u.id: u for u in all_users}
+
+        xp_map: Dict[str, int] = {}
+
+        if period == "all_time":
+            # Use UserStats.total_xp as authoritative cumulative XP
+            all_stats = self.db.query(UserStatsModel).all()
+            for st in all_stats:
+                xp_map[st.user_id] = st.total_xp
+            for u_id in user_map:
+                if u_id not in xp_map:
+                    xp_map[u_id] = 0
+        else:
+            if period == "weekly":
+                start_date = today - timedelta(days=today.weekday())
+            else:  # monthly
+                start_date = today.replace(day=1)
+
+            # Sum DailyActivity.xp_earned for activity_date >= start_date
+            activity_sums = (
+                self.db.query(
+                    DailyActivityModel.user_id,
+                    func.sum(DailyActivityModel.xp_earned).label("period_xp"),
+                )
+                .filter(DailyActivityModel.activity_date >= start_date)
+                .group_by(DailyActivityModel.user_id)
+                .all()
+            )
+
+            for u_id, period_xp in activity_sums:
+                xp_map[u_id] = int(period_xp or 0)
+
+            # Ensure all users are represented
+            for u_id in user_map:
+                if u_id not in xp_map:
+                    xp_map[u_id] = 0
+
+        # Sort users by XP DESC, then by display_name ASC for deterministic order
+        sorted_user_ids = sorted(
+            xp_map.keys(),
+            key=lambda uid: (
+                -xp_map[uid],
+                (user_map[uid].display_name if uid in user_map else "").lower(),
+            ),
+        )
+
+        # Standard Competition Ranking Algorithm (1224 rank)
+        ranked_list: List[Dict[str, Any]] = []
+        prev_xp: Optional[int] = None
+        current_rank = 1
+
+        for idx, u_id in enumerate(sorted_user_ids):
+            user_xp = xp_map[u_id]
+            if prev_xp is not None and user_xp == prev_xp:
+                rank = ranked_list[-1]["rank"]
+            else:
+                rank = idx + 1
+
+            prev_xp = user_xp
+            user_obj = user_map.get(u_id)
+
+            ranked_list.append(
+                {
+                    "rank": rank,
+                    "user_id": u_id,
+                    "username": user_obj.username if user_obj else "unknown",
+                    "display_name": user_obj.display_name if user_obj else "Unknown Learner",
+                    "avatar": user_obj.avatar if user_obj else None,
+                    "xp": user_xp,
+                    "is_current_user": (u_id == current_user_id),
+                }
+            )
+
+        return ranked_list
+
+    def get_leaderboard(
+        self,
+        period: str = "weekly",
+        limit: int = 20,
+        offset: int = 0,
+        current_user_id: Optional[str] = None,
+    ) -> LeaderboardResponse:
         period_clean = period.lower().strip() if period else "weekly"
         if period_clean not in self.VALID_PERIODS:
             raise ValidationError(
                 f"Invalid period parameter '{period}'. Allowed values: {', '.join(sorted(self.VALID_PERIODS))}."
             )
 
-        raw_entries = self.repository.get_entries_by_period(period_clean)
-        entries: List[LeaderboardEntryResponse] = []
+        limit_clean = max(1, min(100, limit))
+        offset_clean = max(0, offset)
 
-        for idx, entry in enumerate(raw_entries, start=1):
-            user = entry.user
-            entries.append(
-                LeaderboardEntryResponse(
-                    rank=entry.rank or idx,
-                    user_id=entry.user_id,
-                    username=user.username if user else "unknown",
-                    display_name=user.display_name if user else "Unknown Learner",
-                    avatar=user.avatar if user else None,
-                    xp=entry.xp,
-                )
+        ranked_all = self._calculate_ranked_entries(period_clean, current_user_id)
+        total_participants = len(ranked_all)
+
+        current_user_rank = None
+        if current_user_id:
+            for item in ranked_all:
+                if item["user_id"] == current_user_id:
+                    current_user_rank = item["rank"]
+                    break
+
+        sliced = ranked_all[offset_clean : offset_clean + limit_clean]
+        entries = [LeaderboardEntryResponse(**item) for item in sliced]
+
+        return LeaderboardResponse(
+            period=period_clean,
+            entries=entries,
+            current_user_rank=current_user_rank,
+            total_participants=total_participants,
+            limit=limit_clean,
+            offset=offset_clean,
+        )
+
+    def get_current_user_rank(self, user_id: str, period: str = "weekly") -> UserRankResponse:
+        period_clean = period.lower().strip() if period else "weekly"
+        if period_clean not in self.VALID_PERIODS:
+            raise ValidationError(
+                f"Invalid period parameter '{period}'. Allowed values: {', '.join(sorted(self.VALID_PERIODS))}."
             )
 
-        return LeaderboardResponse(period=period_clean, entries=entries)
+        ranked_all = self._calculate_ranked_entries(period_clean, current_user_id=user_id)
+        for item in ranked_all:
+            if item["user_id"] == user_id:
+                return UserRankResponse(
+                    period=period_clean,
+                    user_id=user_id,
+                    rank=item["rank"],
+                    xp=item["xp"],
+                    total_participants=len(ranked_all),
+                )
+
+        raise NotFoundError(f"User '{user_id}' rank not found for period '{period_clean}'.")

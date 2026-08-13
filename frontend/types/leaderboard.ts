@@ -7,9 +7,22 @@ export interface LeaderboardEntry {
   display_name: string;
   avatar: string | null;
   xp: number;
+  is_current_user: boolean;
 }
 
 export interface LeaderboardResponse {
   period: LeaderboardPeriod;
   entries: LeaderboardEntry[];
+  current_user_rank: number | null;
+  total_participants: number;
+  limit: number;
+  offset: number;
+}
+
+export interface UserRankResponse {
+  period: LeaderboardPeriod;
+  user_id: string;
+  rank: number;
+  xp: number;
+  total_participants: number;
 }
