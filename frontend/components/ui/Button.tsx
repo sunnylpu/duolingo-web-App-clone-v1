@@ -1,38 +1,52 @@
 import React from "react";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "danger";
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "success" | "danger" | "ghost" | "outline";
   size?: "sm" | "md" | "lg";
+  loading?: boolean;
 }
 
 export const Button: React.FC<ButtonProps> = ({
   children,
   variant = "primary",
   size = "md",
+  loading = false,
   className = "",
   disabled,
   ...props
 }) => {
   const variantStyles = {
-    primary: "duo-button-green text-black font-bold",
-    secondary: "bg-[#1cb0f6] text-white font-bold shadow-[0_4px_0_#1899d6] hover:bg-[#20b8ff] active:shadow-none active:translate-y-1",
-    outline: "border-2 border-[#37464f] text-gray-200 font-bold hover:bg-[#37464f]/30",
-    danger: "bg-[#ff4b4b] text-white font-bold shadow-[0_4px_0_#ea2b2b] hover:bg-[#ff5a5a] active:shadow-none active:translate-y-1",
+    primary: "duo-button-green text-black font-extrabold",
+    secondary: "duo-button-blue text-white font-extrabold",
+    success: "duo-button-green text-black font-extrabold",
+    danger: "duo-button-red text-white font-extrabold",
+    outline: "border-2 border-[#37464f] text-gray-200 font-extrabold hover:bg-[#37464f]/30 active:bg-[#37464f]/50",
+    ghost: "text-gray-400 font-bold hover:text-white hover:bg-[#182830]",
   };
 
   const sizeStyles = {
-    sm: "px-3 py-1.5 text-xs rounded-lg",
-    md: "px-5 py-2.5 text-sm rounded-xl",
+    sm: "px-3 py-1.5 text-xs rounded-xl",
+    md: "px-5 py-2.5 text-sm rounded-2xl",
     lg: "px-6 py-3.5 text-base rounded-2xl",
   };
 
+  const isBtnDisabled = disabled || loading;
+
   return (
     <button
-      className={`inline-flex items-center justify-center transition-all disabled:opacity-50 disabled:pointer-events-none ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
-      disabled={disabled}
+      className={`inline-flex items-center justify-center gap-2 transition-all cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      disabled={isBtnDisabled}
       {...props}
     >
-      {children}
+      {loading ? (
+        <>
+          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span>Loading...</span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 };

@@ -3,35 +3,111 @@
 @tailwind utilities;
 
 :root {
-  --background: #131f24;
-  --foreground: #f7f7f7;
+  --color-primary: #58cc02;
+  --color-primary-shadow: #46a302;
+  --color-secondary: #1cb0f6;
+  --color-secondary-shadow: #1899d6;
+  --color-success: #58cc02;
+  --color-warning: #ffc800;
+  --color-danger: #ff4b4b;
+  --color-danger-shadow: #ea2b2b;
+  --color-purple: #ce82ff;
+  --color-background: #131f24;
+  --color-surface: #182830;
+  --color-border: #37464f;
+  --color-text-main: #ffffff;
+  --color-text-muted: #afbb9a;
+  --color-text-subtle: #778e9b;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  color: var(--color-text-main);
+  background: var(--color-background);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  min-height: 100vh;
+  overflow-x: hidden;
 }
 
-/* Custom Duolingo-style 3D Button Utility */
-.duo-button-green {
-  background-color: #58cc02;
-  box-shadow: 0 4px 0 #46a302;
-  transition: all 0.1s ease;
+@layer utilities {
+  /* Tactile Button Shadows & Physics */
+  .duo-button-green {
+    background-color: var(--color-primary);
+    box-shadow: 0 4px 0 var(--color-primary-shadow);
+    transition: all 0.1s ease;
+  }
+  .duo-button-green:hover:not(:disabled) {
+    background-color: #61e002;
+  }
+  .duo-button-green:active:not(:disabled) {
+    box-shadow: 0 0 0 var(--color-primary-shadow);
+    transform: translateY(4px);
+  }
+
+  .duo-button-blue {
+    background-color: var(--color-secondary);
+    box-shadow: 0 4px 0 var(--color-secondary-shadow);
+    transition: all 0.1s ease;
+  }
+  .duo-button-blue:hover:not(:disabled) {
+    background-color: #20b8ff;
+  }
+  .duo-button-blue:active:not(:disabled) {
+    box-shadow: 0 0 0 var(--color-secondary-shadow);
+    transform: translateY(4px);
+  }
+
+  .duo-button-red {
+    background-color: var(--color-danger);
+    box-shadow: 0 4px 0 var(--color-danger-shadow);
+    transition: all 0.1s ease;
+  }
+  .duo-button-red:hover:not(:disabled) {
+    background-color: #ff5a5a;
+  }
+  .duo-button-red:active:not(:disabled) {
+    box-shadow: 0 0 0 var(--color-danger-shadow);
+    transform: translateY(4px);
+  }
+
+  .duo-card {
+    background-color: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: 1rem;
+    box-shadow: 0 4px 0 var(--color-border);
+  }
+
+  /* Typography Helper Tokens */
+  .text-page-title {
+    font-size: 1.875rem; /* 30px */
+    font-weight: 900;
+    line-height: 2.25rem;
+    letter-spacing: -0.025em;
+  }
+
+  .text-section-title {
+    font-size: 1.25rem; /* 20px */
+    font-weight: 800;
+    line-height: 1.75rem;
+  }
+
+  .text-skill-title {
+    font-size: 1rem; /* 16px */
+    font-weight: 700;
+    line-height: 1.5rem;
+  }
+
+  .text-stat-number {
+    font-size: 1.5rem; /* 24px */
+    font-weight: 900;
+    font-family: monospace;
+  }
 }
 
-.duo-button-green:hover {
-  background-color: #61e002;
-}
-
-.duo-button-green:active {
-  box-shadow: 0 0 0 #46a302;
-  transform: translateY(4px);
-}
-
-.duo-card {
-  background-color: #182830;
-  border: 2px solid #37464f;
-  border-radius: 1rem;
+/* Reduced Motion Override */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
