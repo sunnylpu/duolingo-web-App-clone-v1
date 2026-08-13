@@ -43,5 +43,7 @@ class UserAchievementResponse(BaseModel):
     achievement: AchievementResponse
     is_earned: bool
     earned_at: Optional[datetime] = None
+    progress: int = 0
+    target: int = 1
 
     model_config = ConfigDict(from_attributes=True)

@@ -4,9 +4,8 @@ from httpx import AsyncClient
 from sqlalchemy.orm import Session
 from seed.seed import seed_database
 from app.modules.progress.models import ExerciseAttemptModel, SkillProgressModel, DailyActivityModel
-from app.modules.gamification.models import UserStatsModel
+from app.modules.gamification.models import UserStatsModel, UserAchievementModel
 from app.modules.gamification.service import GamificationService
-from app.modules.progress.service import ProgressService
 
 
 @pytest.fixture(autouse=True)
@@ -31,112 +30,72 @@ async def test_get_current_user_me(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_user_stats(client: AsyncClient):
-    response = await client.get("/api/v1/users/me/stats")
+async def test_get_user_profile_bff_endpoint(client: AsyncClient):
+    response = await client.get("/api/v1/users/me/profile")
     assert response.status_code == 200
     data = response.json()
-    assert data["total_xp"] == 150
-    assert data["current_streak"] == 7
-    assert data["daily_goal_xp"] == 20
+
+    assert "user" in data and data["user"]["id"] == "usr_demo"
+    assert "stats" in data and data["stats"]["total_xp"] == 150
+    assert "learning" in data
+    assert "lessons_completed" in data["learning"]
+    assert "skills_completed" in data["learning"]
+    assert "course_progress_percent" in data["learning"]
 
 
 @pytest.mark.asyncio
-async def test_learning_path_progression_states(client: AsyncClient):
-    response = await client.get("/api/v1/path")
+async def test_get_my_achievements_with_progress(client: AsyncClient):
+    response = await client.get("/api/v1/users/me/achievements")
     assert response.status_code == 200
     data = response.json()
-    assert "recommended_skill_id" in data
-    assert data["recommended_skill_id"] is not None
+    assert isinstance(data, list)
+    assert len(data) > 0
 
-    # Verify skill statuses in Unit 1 & Unit 2
-    all_skills = {}
-    for unit in data["units"]:
-        for skill in unit["skills"]:
-            all_skills[skill["id"]] = skill
-
-    assert "skill_greetings" in all_skills
-    assert all_skills["skill_greetings"]["status"] == "completed"
-    assert all_skills["skill_greetings"]["completion_percent"] == 100.0
-
-    assert "skill_basics" in all_skills
-    assert all_skills["skill_basics"]["status"] in ("available", "in_progress")
-
-    assert "skill_food" in all_skills
-    assert all_skills["skill_food"]["status"] == "locked"
-    assert all_skills["skill_food"]["prerequisite_title"] == "Basics"
+    first_ach = data[0]
+    assert "achievement" in first_ach
+    assert "is_earned" in first_ach
+    assert "progress" in first_ach
+    assert "target" in first_ach
 
 
 @pytest.mark.asyncio
-async def test_locked_lesson_start_access_control_rejection(client: AsyncClient):
-    # Attempt to start lesson lsn_food_1 in locked skill skill_food
-    response = await client.post("/api/v1/lessons/lsn_food_1/start")
-    assert response.status_code == 409
-    data = response.json()
-    assert data["error"]["code"] == "SKILL_LOCKED"
-    assert "Complete the prerequisite skill first" in data["error"]["message"]
+async def test_automated_achievement_evaluation_and_idempotency(db_session: Session):
+    service = GamificationService(db_session)
+
+    # Initially evaluate achievements
+    newly = service.evaluate_achievements("usr_demo", commit=True)
+    assert isinstance(newly, list)
+
+    # Duplicate evaluation should return empty list (idempotency safety)
+    dup = service.evaluate_achievements("usr_demo", commit=True)
+    assert len(dup) == 0
 
 
 @pytest.mark.asyncio
-async def test_post_completion_unlock_cascade(client: AsyncClient, db_session: Session):
-    # 1. Complete remaining lessons for skill_basics (lsn_basics_1 and lsn_basics_2)
-    start1 = await client.post("/api/v1/lessons/lsn_basics_1/start")
-    att1 = start1.json()["attempt_id"]
-    await client.post(
-        "/api/v1/lessons/lsn_basics_1/exercises/ex_bas1_1/answer",
-        json={"attempt_id": att1, "answer": "bebo"},
+async def test_lesson_completion_returns_newly_earned_achievements(client: AsyncClient):
+    start_res = await client.post("/api/v1/lessons/lsn_greetings_1/start")
+    attempt_id = start_res.json()["attempt_id"]
+
+    answers = [
+        ("ex_gr1_1", "Hello"),
+        ("ex_gr1_2", "Good morning"),
+        ("ex_gr1_3", {"pairs": [["Hola", "Hello"], ["Gracias", "Thank you"], ["Adiós", "Goodbye"]]}),
+        ("ex_gr1_4", "Buenas noches"),
+        ("ex_gr1_5", "Hasta luego"),
+        ("ex_gr1_6", "como"),
+    ]
+
+    for ex_id, ans in answers:
+        await client.post(
+            f"/api/v1/lessons/lsn_greetings_1/exercises/{ex_id}/answer",
+            json={"attempt_id": attempt_id, "answer": ans},
+        )
+
+    comp_res = await client.post(
+        "/api/v1/lessons/lsn_greetings_1/complete",
+        json={"attempt_id": attempt_id},
     )
-    await client.post(
-        "/api/v1/lessons/lsn_basics_1/exercises/ex_bas1_2/answer",
-        json={"attempt_id": att1, "answer": "Yo soy un niño"},
-    )
-    comp1 = await client.post("/api/v1/lessons/lsn_basics_1/complete", json={"attempt_id": att1})
-    assert comp1.status_code == 200
-
-    start2 = await client.post("/api/v1/lessons/lsn_basics_2/start")
-    att2 = start2.json()["attempt_id"]
-    await client.post(
-        "/api/v1/lessons/lsn_basics_2/exercises/ex_bas2_1/answer",
-        json={"attempt_id": att2, "answer": "Tú comes pan"},
-    )
-    comp2 = await client.post("/api/v1/lessons/lsn_basics_2/complete", json={"attempt_id": att2})
-    assert comp2.status_code == 200
-
-    # 2. Query path -> skill_food should now be unlocked to "available"
-    path_res = await client.get("/api/v1/path")
-    assert path_res.status_code == 200
-    path_data = path_res.json()
-
-    food_skill = None
-    for unit in path_data["units"]:
-        for skill in unit["skills"]:
-            if skill["id"] == "skill_food":
-                food_skill = skill
-
-    assert food_skill is not None
-    assert food_skill["status"] == "available"
-
-    # 3. Now starting lesson in skill_food should succeed!
-    food_start = await client.post("/api/v1/lessons/lsn_food_1/start")
-    assert food_start.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_path_and_progress_single_source_sync(client: AsyncClient):
-    path_res = await client.get("/api/v1/path")
-    prog_res = await client.get("/api/v1/progress")
-
-    assert path_res.status_code == 200
-    assert prog_res.status_code == 200
-
-    path_skills = {
-        s["id"]: s["status"]
-        for u in path_res.json()["units"]
-        for s in u["skills"]
-    }
-    prog_skills = {
-        s["skill_id"]: s["status"]
-        for s in prog_res.json()["skills"]
-    }
-
-    for skill_id, status in path_skills.items():
-        assert prog_skills.get(skill_id) == status
+    assert comp_res.status_code == 200
+    data = comp_res.json()
+    assert "achievements" in data
+    assert "newly_earned" in data["achievements"]

@@ -317,6 +317,20 @@ class LessonService:
                 commit=False,
             )
 
+            # Evaluate achievements idempotently
+            newly_earned_achs = self.gamification_service.evaluate_achievements(
+                user_id=current_user.id, commit=False
+            )
+            newly_earned_data = [
+                {
+                    "code": a.code,
+                    "name": a.name,
+                    "description": a.description,
+                    "icon": a.icon,
+                }
+                for a in newly_earned_achs
+            ]
+
             self.db.commit()
 
             sp_data = {
@@ -335,6 +349,7 @@ class LessonService:
                 skill_progress=sp_data,
                 streak=streak_daily_info.get("streak"),
                 daily_progress=streak_daily_info.get("daily_progress"),
+                achievements={"newly_earned": newly_earned_data},
                 already_completed=False,
             )
         except Exception:

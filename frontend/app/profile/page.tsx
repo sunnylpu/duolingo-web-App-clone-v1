@@ -3,17 +3,17 @@
 import { useEffect, useState } from "react";
 import { userService } from "@/services/user-service";
 import { achievementService } from "@/services/achievement-service";
-import { User, UserStats, UserAchievement } from "@/types";
+import { UserProfile, UserAchievement } from "@/types";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { DailyActivitySummary } from "@/components/gamification/DailyActivitySummary";
+import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StreakDisplay } from "@/components/gamification/StreakDisplay";
+import { DailyActivitySummary } from "@/components/gamification/DailyActivitySummary";
+import { AchievementCard } from "@/features/achievements/components/AchievementCard";
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [stats, setStats] = useState<UserStats | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [achievements, setAchievements] = useState<UserAchievement[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,13 +22,11 @@ export default function ProfilePage() {
     setLoading(true);
     setError(null);
     try {
-      const [userRes, statsRes, achRes] = await Promise.all([
-        userService.getCurrentUser(),
-        userService.getUserStats(),
+      const [profileRes, achRes] = await Promise.all([
+        userService.getUserProfile(),
         achievementService.getMyAchievements(),
       ]);
-      setUser(userRes);
-      setStats(statsRes);
+      setProfile(profileRes);
       setAchievements(achRes);
     } catch (err: any) {
       setError(err?.message || "Failed to load user profile from backend.");
@@ -42,10 +40,10 @@ export default function ProfilePage() {
   }, []);
 
   if (loading) {
-    return <LoadingState message="Loading profile data..." fullPage />;
+    return <LoadingState message="Loading profile dashboard..." fullPage />;
   }
 
-  if (error || !user || !stats) {
+  if (error || !profile) {
     return (
       <ErrorState
         title="Profile Unavailable"
@@ -55,10 +53,12 @@ export default function ProfilePage() {
     );
   }
 
+  const { user, stats, learning } = profile;
+
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-4xl mx-auto py-2">
       {/* Profile Header Card */}
-      <Card className="p-6 md:p-8">
+      <Card className="p-6 md:p-8 bg-[#182830] border-2 border-[#37464f]">
         <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 text-center sm:text-left">
           <div className="flex items-center gap-6">
             <div className="w-20 h-20 rounded-full bg-[#58cc02] flex items-center justify-center text-black font-black text-4xl shadow-[0_4px_0_#46a302]">
@@ -76,27 +76,56 @@ export default function ProfilePage() {
         </div>
       </Card>
 
-      {/* Gamification Stats */}
+      {/* Gamification Statistics Grid */}
       <div>
         <h2 className="text-lg font-bold text-gray-200 mb-3">Statistics</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <Card className="text-center">
-            <div className="text-2xl font-black text-[#ffc800]">{stats.total_xp}</div>
+          <Card className="text-center p-4 bg-[#182830] border-2 border-[#37464f]">
+            <div className="text-2xl font-black text-[#ffc800]">⭐ {stats.total_xp}</div>
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Total XP</div>
           </Card>
-          <Card className="text-center">
-            <div className="text-2xl font-black text-[#ff9600]">🔥 {stats.current_streak}</div>
+          <Card className="text-center p-4 bg-[#182830] border-2 border-[#37464f]">
+            <div className="text-2xl font-black text-[#ff9600]">🔥 {stats.current_streak}d</div>
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Current Streak</div>
           </Card>
-          <Card className="text-center">
-            <div className="text-2xl font-black text-[#ff9600]">🏆 {stats.longest_streak}</div>
+          <Card className="text-center p-4 bg-[#182830] border-2 border-[#37464f]">
+            <div className="text-2xl font-black text-[#ff9600]">🏆 {stats.longest_streak}d</div>
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Longest Streak</div>
           </Card>
-          <Card className="text-center">
+          <Card className="text-center p-4 bg-[#182830] border-2 border-[#37464f]">
             <div className="text-2xl font-black text-[#1cb0f6]">💎 {stats.gems}</div>
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Gems</div>
           </Card>
         </div>
+      </div>
+
+      {/* Learning Progress Summary */}
+      <div>
+        <h2 className="text-lg font-bold text-gray-200 mb-3">Course Progress Summary</h2>
+        <Card className="p-6 bg-[#182830] border-2 border-[#37464f] space-y-4">
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="p-3 bg-[#131f24] rounded-2xl border border-[#37464f]">
+              <div className="text-xs text-gray-400 font-bold uppercase">Lessons Done</div>
+              <div className="text-xl font-black text-[#1cb0f6] mt-1">📚 {learning.lessons_completed}</div>
+            </div>
+            <div className="p-3 bg-[#131f24] rounded-2xl border border-[#37464f]">
+              <div className="text-xs text-gray-400 font-bold uppercase">Skills Mastered</div>
+              <div className="text-xl font-black text-[#58cc02] mt-1">👑 {learning.skills_completed}</div>
+            </div>
+            <div className="p-3 bg-[#131f24] rounded-2xl border border-[#37464f]">
+              <div className="text-xs text-gray-400 font-bold uppercase">In Progress</div>
+              <div className="text-xl font-black text-[#ffc800] mt-1">📖 {learning.skills_in_progress}</div>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2">
+            <div className="flex justify-between items-center text-xs font-black">
+              <span className="text-gray-300 uppercase tracking-wider">Overall Spanish Progress</span>
+              <span className="text-[#58cc02]">{learning.course_progress_percent}%</span>
+            </div>
+            <ProgressBar value={learning.course_progress_percent} height="h-3.5" />
+          </div>
+        </Card>
       </div>
 
       {/* Today's Daily Activity Widget */}
@@ -112,36 +141,7 @@ export default function ProfilePage() {
         <h2 className="text-lg font-bold text-gray-200 mb-3">Achievements</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {achievements.map((item) => (
-            <Card
-              key={item.achievement.id}
-              className={`flex items-start gap-4 ${
-                !item.is_earned ? "opacity-50 grayscale" : ""
-              }`}
-            >
-              <div className="w-12 h-12 rounded-2xl bg-[#ffc800]/20 text-[#ffc800] flex items-center justify-center text-2xl shrink-0 font-bold">
-                🏆
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="flex justify-between items-start">
-                  <h3 className="font-bold text-base text-white">
-                    {item.achievement.name}
-                  </h3>
-                  {item.is_earned ? (
-                    <Badge variant="green">Unlocked</Badge>
-                  ) : (
-                    <Badge variant="gray">Locked</Badge>
-                  )}
-                </div>
-                <p className="text-xs text-gray-400">
-                  {item.achievement.description}
-                </p>
-                {item.is_earned && item.earned_at && (
-                  <p className="text-[10px] text-gray-500 font-mono pt-1">
-                    Earned on {new Date(item.earned_at).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            </Card>
+            <AchievementCard key={item.achievement.id} userAchievement={item} />
           ))}
         </div>
       </div>

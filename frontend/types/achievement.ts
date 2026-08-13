@@ -12,4 +12,6 @@ export interface UserAchievement {
   achievement: Achievement;
   is_earned: boolean;
   earned_at: string | null;
+  progress?: number;
+  target?: number;
 }

@@ -23,6 +23,8 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
   const dailyGoalXp = result?.daily_progress?.goal ?? 30;
   const goalJustCompleted = result?.daily_progress?.goal_just_completed ?? false;
 
+  const newlyEarnedAchievements: any[] = result?.achievements?.newly_earned ?? [];
+
   return (
     <div className="max-w-md mx-auto py-12 px-4 text-center animate-fadeIn select-none">
       <Card className="p-8 space-y-6 bg-[#182830] border-2 border-[#58cc02] shadow-2xl">
@@ -50,6 +52,21 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
             <span>Daily Goal Complete! ({dailyXp} / {dailyGoalXp} XP)</span>
           </div>
         )}
+
+        {/* Newly Unlocked Achievements */}
+        {newlyEarnedAchievements.map((ach) => (
+          <div
+            key={ach.code}
+            className="p-4 bg-[#ffc800]/20 border-2 border-[#ffc800] rounded-2xl space-y-1 text-center animate-bounce"
+          >
+            <div className="text-3xl">{ach.icon || "🏆"}</div>
+            <div className="text-xs font-black uppercase text-[#ffc800] tracking-wider">
+              ACHIEVEMENT UNLOCKED!
+            </div>
+            <div className="text-base font-extrabold text-white">{ach.name}</div>
+            <div className="text-xs text-gray-300">{ach.description}</div>
+          </div>
+        ))}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-3 py-1">

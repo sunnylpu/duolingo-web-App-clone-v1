@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.modules.gamification.repository import GamificationRepository
 from app.modules.progress.repository import ProgressRepository
-from app.modules.progress.models import DailyActivityModel
-from app.modules.gamification.models import AchievementModel
+from app.modules.progress.models import DailyActivityModel, LessonAttemptModel, SkillProgressModel
+from app.modules.gamification.models import AchievementModel, UserAchievementModel
 from app.modules.user.models import UserModel
 from app.modules.gamification.schemas import (
     GamificationStatsResponse,
@@ -137,25 +137,20 @@ class GamificationService:
 
         # Deterministic Streak Algorithm
         if last_active is None:
-            # First activity ever
             stats.current_streak = 1
             streak_increased = True
         elif last_active == current_date:
-            # Same-day activity -> streak unchanged
             streak_increased = False
         elif last_active == current_date - timedelta(days=1):
-            # Consecutive day activity -> streak + 1
             stats.current_streak += 1
             streak_increased = True
         else:
-            # Missed 1+ days -> reset streak to 1
             stats.current_streak = 1
             streak_increased = True
 
         stats.longest_streak = max(stats.longest_streak, stats.current_streak)
         stats.last_active_date = current_date
 
-        # Fetch / update today's DailyActivity record
         today_act = (
             self.db.query(DailyActivityModel)
             .filter(
@@ -191,6 +186,64 @@ class GamificationService:
             },
         }
 
+    def evaluate_achievements(self, user_id: str, commit: bool = True) -> List[AchievementResponse]:
+        """
+        Data-driven achievement evaluation. Checks user state against achievement requirements
+        and idempotently grants newly unlocked achievements.
+        """
+        all_achievements = self.db.query(AchievementModel).all()
+        user_earned = self.repository.get_user_achievements(user_id)
+        earned_ids = {ua.achievement_id for ua in user_earned}
+
+        stats = self.repository.get_user_stats(user_id)
+        total_xp = stats.total_xp if stats else 0
+        current_streak = stats.current_streak if stats else 0
+
+        # Unique completed lessons count
+        completed_attempts = (
+            self.db.query(LessonAttemptModel)
+            .filter(
+                LessonAttemptModel.user_id == user_id,
+                LessonAttemptModel.status == "completed",
+            )
+            .all()
+        )
+        unique_completed_lessons = {a.lesson_id for a in completed_attempts}
+        lessons_completed_count = len(unique_completed_lessons)
+
+        newly_earned: List[AchievementResponse] = []
+
+        for ach in all_achievements:
+            if ach.id in earned_ids:
+                continue
+
+            satisfied = False
+            req_type = ach.requirement_type
+            req_val = ach.requirement_value
+
+            if req_type == "lessons_completed":
+                satisfied = lessons_completed_count >= req_val
+            elif req_type == "total_xp":
+                satisfied = total_xp >= req_val
+            elif req_type == "streak":
+                satisfied = current_streak >= req_val
+
+            if satisfied:
+                ua_id = f"uach_{user_id}_{ach.id}"
+                self.repository.grant_user_achievement(
+                    user_achievement_id=ua_id,
+                    user_id=user_id,
+                    achievement_id=ach.id,
+                )
+                newly_earned.append(AchievementResponse.model_validate(ach))
+
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+
+        return newly_earned
+
     def get_all_achievements(self) -> List[AchievementResponse]:
         achievements = self.db.query(AchievementModel).all()
         return [AchievementResponse.model_validate(a) for a in achievements]
@@ -200,15 +253,43 @@ class GamificationService:
         user_earned = self.repository.get_user_achievements(current_user.id)
         earned_records = {ua.achievement_id: ua.earned_at for ua in user_earned}
 
+        stats = self.repository.get_user_stats(current_user.id)
+        total_xp = stats.total_xp if stats else 0
+        current_streak = stats.current_streak if stats else 0
+
+        completed_attempts = (
+            self.db.query(LessonAttemptModel)
+            .filter(
+                LessonAttemptModel.user_id == current_user.id,
+                LessonAttemptModel.status == "completed",
+            )
+            .all()
+        )
+        lessons_completed_count = len({a.lesson_id for a in completed_attempts})
+
         results: List[UserAchievementResponse] = []
         for ach in all_achievements:
             is_earned = ach.id in earned_records
             earned_at = earned_records.get(ach.id)
+
+            # Determine progress for locked achievements
+            curr_val = 0
+            if ach.requirement_type == "lessons_completed":
+                curr_val = lessons_completed_count
+            elif ach.requirement_type == "total_xp":
+                curr_val = total_xp
+            elif ach.requirement_type == "streak":
+                curr_val = current_streak
+
+            progress_val = ach.requirement_value if is_earned else min(curr_val, ach.requirement_value)
+
             results.append(
                 UserAchievementResponse(
                     achievement=AchievementResponse.model_validate(ach),
                     is_earned=is_earned,
                     earned_at=earned_at,
+                    progress=progress_val,
+                    target=ach.requirement_value,
                 )
             )
         return results

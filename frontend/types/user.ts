@@ -18,3 +18,16 @@ export interface UserStats {
   daily_goal_completed?: boolean;
   activity_date?: string;
 }
+
+export interface LearningSummary {
+  lessons_completed: number;
+  skills_completed: number;
+  skills_in_progress: number;
+  course_progress_percent: number;
+}
+
+export interface UserProfile {
+  user: User;
+  stats: UserStats;
+  learning: LearningSummary;
+}

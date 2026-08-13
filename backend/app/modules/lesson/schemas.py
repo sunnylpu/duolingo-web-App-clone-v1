@@ -79,6 +79,7 @@ class LessonCompleteResponse(BaseModel):
     skill_progress: Dict[str, Any]
     streak: Optional[Dict[str, Any]] = None
     daily_progress: Optional[Dict[str, Any]] = None
+    achievements: Optional[Dict[str, Any]] = None
     already_completed: bool = False
 
     model_config = ConfigDict(from_attributes=True)

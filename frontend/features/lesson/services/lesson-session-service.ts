@@ -45,6 +45,14 @@ export interface LessonCompleteResult {
     goal_completed: boolean;
     goal_just_completed: boolean;
   };
+  achievements?: {
+    newly_earned?: Array<{
+      code: string;
+      name: string;
+      description: string;
+      icon: string;
+    }>;
+  };
   already_completed: boolean;
 }
 
