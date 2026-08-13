@@ -3,11 +3,11 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.modules.lesson.models import SkillModel, LessonModel, ExerciseModel
-from app.modules.progress.models import LessonAttemptModel
+from app.modules.progress.models import LessonAttemptModel, ExerciseAttemptModel
 
 
 class LessonRepository:
-    """Handles database transactions and query logic for Lesson, Skill, and Exercise entities."""
+    """Handles database transactions and query logic for Lesson, Skill, Exercise, and Attempt entities."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -158,6 +158,13 @@ class LessonRepository:
             .first()
         )
 
+    def get_lesson_attempt_by_id(self, attempt_id: str) -> Optional[LessonAttemptModel]:
+        return (
+            self.db.query(LessonAttemptModel)
+            .filter(LessonAttemptModel.id == str(attempt_id))
+            .first()
+        )
+
     def create_lesson_attempt(
         self, user_id: str, lesson_id: str
     ) -> LessonAttemptModel:
@@ -174,3 +181,37 @@ class LessonRepository:
         self.db.add(attempt)
         self.db.flush()
         return attempt
+
+    def get_exercise_attempt(
+        self, lesson_attempt_id: str, exercise_id: str
+    ) -> Optional[ExerciseAttemptModel]:
+        return (
+            self.db.query(ExerciseAttemptModel)
+            .filter(
+                ExerciseAttemptModel.lesson_attempt_id == str(lesson_attempt_id),
+                ExerciseAttemptModel.exercise_id == exercise_id,
+            )
+            .first()
+        )
+
+    def create_exercise_attempt(
+        self,
+        lesson_attempt_id: str,
+        exercise_id: str,
+        answer: str,
+        is_correct: bool,
+        hearts_lost: int = 0,
+    ) -> ExerciseAttemptModel:
+        attempt_id = f"ex_att_{uuid.uuid4().hex[:12]}"
+        ex_attempt = ExerciseAttemptModel(
+            id=attempt_id,
+            lesson_attempt_id=str(lesson_attempt_id),
+            exercise_id=exercise_id,
+            answer=answer,
+            is_correct=is_correct,
+            hearts_lost=hearts_lost,
+            answered_at=datetime.utcnow(),
+        )
+        self.db.add(ex_attempt)
+        self.db.flush()
+        return ex_attempt

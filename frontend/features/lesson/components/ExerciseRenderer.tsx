@@ -9,9 +9,21 @@ import { TypeAnswerExercise } from "./exercises/TypeAnswerExercise";
 
 interface ExerciseRendererProps {
   exercise: Exercise | null;
+  selectedAnswer: string;
+  onSelectAnswer: (answer: string) => void;
+  onSubmit?: () => void;
+  disabled?: boolean;
+  feedbackStatus?: "idle" | "correct" | "incorrect";
 }
 
-export const ExerciseRenderer: React.FC<ExerciseRendererProps> = ({ exercise }) => {
+export const ExerciseRenderer: React.FC<ExerciseRendererProps> = ({
+  exercise,
+  selectedAnswer,
+  onSelectAnswer,
+  onSubmit,
+  disabled = false,
+  feedbackStatus = "idle",
+}) => {
   if (!exercise) {
     return (
       <div className="p-8 text-center text-gray-500 font-bold">
@@ -22,7 +34,26 @@ export const ExerciseRenderer: React.FC<ExerciseRendererProps> = ({ exercise }) 
 
   switch (exercise.type) {
     case "multiple_choice":
-      return <MultipleChoiceExercise exercise={exercise} />;
+      return (
+        <MultipleChoiceExercise
+          exercise={exercise}
+          selectedAnswer={selectedAnswer}
+          onSelectAnswer={onSelectAnswer}
+          disabled={disabled}
+          feedbackStatus={feedbackStatus}
+        />
+      );
+    case "type_answer":
+      return (
+        <TypeAnswerExercise
+          exercise={exercise}
+          selectedAnswer={selectedAnswer}
+          onSelectAnswer={onSelectAnswer}
+          onSubmit={onSubmit}
+          disabled={disabled}
+          feedbackStatus={feedbackStatus}
+        />
+      );
     case "translate":
       return <TranslateExercise exercise={exercise} />;
     case "word_bank":
@@ -31,8 +62,6 @@ export const ExerciseRenderer: React.FC<ExerciseRendererProps> = ({ exercise }) 
       return <MatchPairsExercise exercise={exercise} />;
     case "fill_blank":
       return <FillBlankExercise exercise={exercise} />;
-    case "type_answer":
-      return <TypeAnswerExercise exercise={exercise} />;
     default:
       return (
         <div className="p-8 text-center text-gray-400">

@@ -1,13 +1,14 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { LessonDetail, UserStats } from "@/types";
 import { LessonHeader } from "./LessonHeader";
 import { LessonProgress } from "./LessonProgress";
 import { ExerciseRenderer } from "./ExerciseRenderer";
-import { LessonFooter } from "./LessonFooter";
+import { ExerciseFeedback } from "./ExerciseFeedback";
 import { ExitConfirmationModal } from "./ExitConfirmationModal";
 import { useLessonSession } from "../hooks/useLessonSession";
+import { useExerciseAnswer } from "../hooks/useExerciseAnswer";
 import { LessonIntro } from "./LessonIntro";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -23,6 +24,7 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
 }) => {
   const {
     step,
+    attempt,
     currentExerciseIndex,
     currentExercise,
     totalExercises,
@@ -33,6 +35,33 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
     openExitModal,
     closeExitModal,
   } = useLessonSession(lesson);
+
+  const attemptId = attempt?.attempt_id || null;
+
+  const {
+    selectedAnswer,
+    setSelectedAnswer,
+    isSubmitting,
+    result,
+    feedbackState,
+    submitAnswer,
+    reset: resetAnswer,
+  } = useExerciseAnswer(lesson.id, attemptId);
+
+  // Reset exercise selection whenever current exercise index changes
+  useEffect(() => {
+    resetAnswer();
+  }, [currentExerciseIndex]);
+
+  const handleCheck = async () => {
+    if (!currentExercise) return;
+    await submitAnswer(currentExercise.id);
+  };
+
+  const handleContinue = () => {
+    resetAnswer();
+    nextExercise();
+  };
 
   if (step === "intro") {
     return (
@@ -73,8 +102,10 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
     );
   }
 
+  const isAnswered = feedbackState !== "idle";
+
   return (
-    <div className="min-h-screen bg-[#131f24] flex flex-col justify-between pb-24">
+    <div className="min-h-screen bg-[#131f24] flex flex-col justify-between pb-28">
       {/* Header */}
       <LessonHeader
         currentIndex={currentExerciseIndex}
@@ -89,13 +120,24 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
           currentIndex={currentExerciseIndex}
           totalExercises={totalExercises}
         />
-        <ExerciseRenderer exercise={currentExercise} />
+        <ExerciseRenderer
+          exercise={currentExercise}
+          selectedAnswer={selectedAnswer}
+          onSelectAnswer={setSelectedAnswer}
+          onSubmit={handleCheck}
+          disabled={isSubmitting || isAnswered}
+          feedbackStatus={feedbackState}
+        />
       </main>
 
-      {/* Footer CTA */}
-      <LessonFooter
-        onContinue={nextExercise}
-        isLastExercise={currentExerciseIndex >= totalExercises - 1}
+      {/* Interactive Bottom Feedback & CTA Bar */}
+      <ExerciseFeedback
+        status={feedbackState}
+        correctAnswer={result?.correct_answer}
+        isSubmitting={isSubmitting}
+        canCheck={Boolean(selectedAnswer.trim())}
+        onCheck={handleCheck}
+        onContinue={handleContinue}
       />
 
       {/* Exit Confirmation Dialog */}

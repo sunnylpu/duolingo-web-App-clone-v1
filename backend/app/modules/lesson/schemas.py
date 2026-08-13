@@ -48,3 +48,18 @@ class LessonStartResponse(BaseModel):
     started_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AnswerSubmissionRequest(BaseModel):
+    attempt_id: Any
+    answer: str
+
+
+class AnswerSubmissionResponse(BaseModel):
+    exercise_id: str
+    is_correct: bool
+    correct_answer: str
+    hearts_lost: int = 0
+    attempt_completed: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
