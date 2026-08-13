@@ -94,6 +94,29 @@ async def test_get_lesson_detail_and_404(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_start_lesson_endpoint_and_reuse(client: AsyncClient):
+    # Start valid lesson
+    response = await client.post("/api/v1/lessons/lsn_greetings_1/start")
+    assert response.status_code == 200
+    data = response.json()
+    assert "attempt_id" in data
+    assert data["lesson_id"] == "lsn_greetings_1"
+    assert data["status"] == "started"
+    attempt_id_1 = data["attempt_id"]
+
+    # Start same lesson again -> must reuse active attempt_id
+    res_reuse = await client.post("/api/v1/lessons/lsn_greetings_1/start")
+    assert res_reuse.status_code == 200
+    data_reuse = res_reuse.json()
+    assert data_reuse["attempt_id"] == attempt_id_1
+
+    # Start invalid lesson -> returns 404
+    err_res = await client.post("/api/v1/lessons/invalid_lesson_id/start")
+    assert err_res.status_code == 404
+    assert err_res.json()["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
 async def test_get_user_progress(client: AsyncClient):
     response = await client.get("/api/v1/progress")
     assert response.status_code == 200

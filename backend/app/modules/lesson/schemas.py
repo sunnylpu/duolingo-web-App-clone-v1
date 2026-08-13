@@ -1,4 +1,5 @@
 from typing import Optional, List, Any, Dict
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -36,5 +37,14 @@ class SkillResponse(BaseModel):
     xp_reward: int
     prerequisite_skill_id: Optional[str] = None
     lessons: List[LessonDetailResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LessonStartResponse(BaseModel):
+    attempt_id: Any
+    lesson_id: str
+    status: str
+    started_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
