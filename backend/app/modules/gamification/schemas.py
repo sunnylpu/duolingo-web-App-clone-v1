@@ -1,6 +1,12 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, date
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class HeartRegenerationInfo(BaseModel):
+    enabled: bool = True
+    seconds_until_next: Optional[int] = None
+    interval_seconds: int = 1800
 
 
 class GamificationStatsResponse(BaseModel):
@@ -8,6 +14,8 @@ class GamificationStatsResponse(BaseModel):
     current_streak: int
     longest_streak: int
     hearts: int
+    max_hearts: int = 5
+    heart_regeneration: Optional[HeartRegenerationInfo] = None
     gems: int
     daily_goal_xp: int
     daily_xp: int
@@ -45,5 +53,38 @@ class UserAchievementResponse(BaseModel):
     earned_at: Optional[datetime] = None
     progress: int = 0
     target: int = 1
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PracticeExerciseResponse(BaseModel):
+    exercise_id: str
+    prompt: str
+    type: str
+    correct_answer: str
+    data: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PracticeSubmissionRequest(BaseModel):
+    exercise_id: str
+    answer: Union[str, Dict[str, Any], List[Any]]
+
+
+class PracticeSubmissionResponse(BaseModel):
+    is_correct: bool
+    correct_answer: str
+    hearts: int
+    max_hearts: int = 5
+    recovered: int = 1
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HeartRefillResponse(BaseModel):
+    hearts: int
+    max_hearts: int = 5
+    refilled: bool = True
 
     model_config = ConfigDict(from_attributes=True)

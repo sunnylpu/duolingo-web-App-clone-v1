@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     API_PREFIX: str = Field(default="/api/v1")
     APP_TIMEZONE: str = Field(default="Asia/Kolkata")
 
+    # Heart System Configuration
+    MAX_HEARTS: int = Field(default=5)
+    HEART_REGEN_MINUTES: int = Field(default=30)
+    PRACTICE_RECOVERY_COOLDOWN_MINUTES: int = Field(default=15)
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Returns CORS origins as a sanitized list of origin strings."""

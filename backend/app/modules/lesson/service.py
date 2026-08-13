@@ -38,6 +38,7 @@ class LessonService:
     def start_lesson(
         self, current_user: UserModel, lesson_id: str
     ) -> LessonStartResponse:
+        self.gamification_service.refresh_hearts(current_user.id)
         lesson = self.repository.get_lesson_by_id(lesson_id)
         if not lesson:
             raise NotFoundError(f"Lesson with ID '{lesson_id}' was not found.")
@@ -132,8 +133,9 @@ class LessonService:
                 attempt_completed=False,
             )
 
-        # 7. Zero hearts check (reject answer if user has no hearts remaining)
-        current_hearts = current_user.stats.hearts if current_user.stats else 5
+        # 7. Refresh hearts and zero hearts check (reject answer if user has no hearts remaining)
+        refreshed_stats = self.gamification_service.refresh_hearts(current_user.id)
+        current_hearts = refreshed_stats.hearts
         if current_hearts <= 0:
             raise ConflictError("You have no hearts remaining.", code="OUT_OF_HEARTS")
 

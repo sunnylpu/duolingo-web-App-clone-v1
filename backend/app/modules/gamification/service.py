@@ -1,21 +1,27 @@
 import uuid
-from datetime import datetime, date, timedelta
-from typing import List, Dict, Any, Optional
-import zoneinfo
+from datetime import datetime, date, timedelta, timezone
+from typing import List, Dict, Any, Optional, Union
 from sqlalchemy.orm import Session
 from app.config import settings
+from app.shared.clock import Clock, system_clock
 from app.modules.gamification.repository import GamificationRepository
 from app.modules.progress.repository import ProgressRepository
-from app.modules.progress.models import DailyActivityModel, LessonAttemptModel, SkillProgressModel
-from app.modules.gamification.models import AchievementModel, UserAchievementModel
+from app.modules.progress.models import DailyActivityModel, LessonAttemptModel
+from app.modules.gamification.models import AchievementModel, UserAchievementModel, UserStatsModel
+from app.modules.lesson.models import ExerciseModel
 from app.modules.user.models import UserModel
 from app.modules.gamification.schemas import (
     GamificationStatsResponse,
     DailyActivityResponse,
     AchievementResponse,
     UserAchievementResponse,
+    HeartRegenerationInfo,
+    PracticeExerciseResponse,
+    PracticeSubmissionResponse,
+    HeartRefillResponse,
 )
-from app.shared.errors import NotFoundError
+from app.shared.errors import NotFoundError, ValidationError, ConflictError
+import zoneinfo
 
 
 def get_current_activity_date() -> date:
@@ -28,22 +34,95 @@ def get_current_activity_date() -> date:
 
 
 class GamificationService:
-    """Contains business logic for Gamification metrics, Streaks, Daily Goals, and Achievements."""
+    """Contains business logic for Gamification metrics, Streaks, Daily Goals, Achievements, and Heart Regeneration."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, clock: Optional[Clock] = None):
         self.db = db
+        self.clock = clock or system_clock
         self.repository = GamificationRepository(db)
         self.progress_repository = ProgressRepository(db)
 
-    def get_user_stats(self, current_user: UserModel) -> GamificationStatsResponse:
-        stats = self.repository.get_user_stats(current_user.id)
-        if not stats and current_user.stats:
-            stats = current_user.stats
-
+    def refresh_hearts(self, user_id: str) -> UserStatsModel:
+        """
+        Lazy Heart Regeneration Algorithm.
+        Calculates elapsed time and regenerates hearts up to MAX_HEARTS.
+        """
+        stats = self.repository.get_user_stats(user_id)
         if not stats:
-            raise NotFoundError("Gamification statistics not found.")
+            raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
 
-        today_date = get_current_activity_date()
+        current_time = self.clock.now()
+
+        # Ensure tz-awareness compatibility
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+
+        max_hearts = settings.MAX_HEARTS
+        interval_seconds = settings.HEART_REGEN_MINUTES * 60
+
+        if stats.hearts >= max_hearts:
+            stats.hearts = max_hearts
+            stats.last_heart_regeneration_at = None
+            self.db.flush()
+            return stats
+
+        last_regen = stats.last_heart_regeneration_at
+        if last_regen is None:
+            stats.last_heart_regeneration_at = current_time
+            self.db.flush()
+            return stats
+
+        if last_regen.tzinfo is None:
+            last_regen = last_regen.replace(tzinfo=timezone.utc)
+
+        elapsed = (current_time - last_regen).total_seconds()
+        if elapsed >= interval_seconds:
+            intervals_gained = int(elapsed // interval_seconds)
+            new_hearts = min(max_hearts, stats.hearts + intervals_gained)
+
+            if new_hearts >= max_hearts:
+                stats.hearts = max_hearts
+                stats.last_heart_regeneration_at = None
+            else:
+                stats.hearts = new_hearts
+                stats.last_heart_regeneration_at = last_regen + timedelta(seconds=intervals_gained * interval_seconds)
+
+            self.db.flush()
+
+        return stats
+
+    def get_heart_regeneration_info(self, stats: UserStatsModel) -> HeartRegenerationInfo:
+        max_hearts = settings.MAX_HEARTS
+        interval_seconds = settings.HEART_REGEN_MINUTES * 60
+
+        if stats.hearts >= max_hearts or not stats.last_heart_regeneration_at:
+            return HeartRegenerationInfo(
+                enabled=True,
+                seconds_until_next=None,
+                interval_seconds=interval_seconds,
+            )
+
+        current_time = self.clock.now()
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+
+        last_regen = stats.last_heart_regeneration_at
+        if last_regen.tzinfo is None:
+            last_regen = last_regen.replace(tzinfo=timezone.utc)
+
+        elapsed = (current_time - last_regen).total_seconds()
+        remaining = max(0, int(interval_seconds - (elapsed % interval_seconds)))
+
+        return HeartRegenerationInfo(
+            enabled=True,
+            seconds_until_next=remaining,
+            interval_seconds=interval_seconds,
+        )
+
+    def get_user_stats(self, current_user: UserModel) -> GamificationStatsResponse:
+        stats = self.refresh_hearts(current_user.id)
+
+        today_date = current_user.stats.last_active_date or date.today()
         today_act = (
             self.db.query(DailyActivityModel)
             .filter(
@@ -55,12 +134,15 @@ class GamificationService:
 
         daily_xp = today_act.xp_earned if today_act else 0
         goal_completed = today_act.goal_completed if today_act else (daily_xp >= stats.daily_goal_xp)
+        regen_info = self.get_heart_regeneration_info(stats)
 
         return GamificationStatsResponse(
             total_xp=stats.total_xp,
             current_streak=stats.current_streak,
             longest_streak=stats.longest_streak,
             hearts=stats.hearts,
+            max_hearts=settings.MAX_HEARTS,
+            heart_regeneration=regen_info,
             gems=stats.gems,
             daily_goal_xp=stats.daily_goal_xp,
             daily_xp=daily_xp,
@@ -68,53 +150,108 @@ class GamificationService:
             activity_date=today_date.isoformat(),
         )
 
-    def get_today_activity(self, current_user: UserModel) -> DailyActivityResponse:
-        stats = self.repository.get_user_stats(current_user.id)
-        goal_xp = stats.daily_goal_xp if stats else 30
-
-        today_date = get_current_activity_date()
-        today_act = (
-            self.db.query(DailyActivityModel)
-            .filter(
-                DailyActivityModel.user_id == current_user.id,
-                DailyActivityModel.activity_date == today_date,
-            )
-            .first()
-        )
-
-        if not today_act:
-            return DailyActivityResponse(
-                date=today_date.isoformat(),
-                xp_earned=0,
-                lessons_completed=0,
-                goal_xp=goal_xp,
-                goal_completed=False,
-            )
-
-        return DailyActivityResponse(
-            date=today_act.activity_date.isoformat(),
-            xp_earned=today_act.xp_earned,
-            lessons_completed=today_act.lessons_completed,
-            goal_xp=goal_xp,
-            goal_completed=today_act.goal_completed,
-        )
-
     def deduct_heart(self, user_id: str) -> int:
-        """Deducts 1 heart for an incorrect answer, ensuring hearts never drop below 0."""
-        stats = self.repository.get_user_stats(user_id)
-        if not stats:
-            raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
+        stats = self.refresh_hearts(user_id)
+        if stats.hearts <= 0:
+            stats.hearts = 0
+            self.db.flush()
+            return 0
 
         stats.hearts = max(stats.hearts - 1, 0)
+        if stats.last_heart_regeneration_at is None:
+            curr = self.clock.now()
+            if curr.tzinfo is None:
+                curr = curr.replace(tzinfo=timezone.utc)
+            stats.last_heart_regeneration_at = curr
+
         self.db.flush()
         return stats.hearts
 
-    def award_lesson_xp(self, user_id: str, xp_amount: int) -> int:
-        """Awards fixed lesson XP reward to user_stats.total_xp safely."""
+    def get_practice_exercise(self) -> PracticeExerciseResponse:
+        """Returns a lightweight practice exercise from existing pool or default."""
+        exercise = self.db.query(ExerciseModel).first()
+        if exercise:
+            return PracticeExerciseResponse(
+                exercise_id=exercise.id,
+                prompt=exercise.prompt,
+                type=exercise.type,
+                correct_answer=exercise.correct_answer,
+                data=exercise.data,
+            )
+
+        return PracticeExerciseResponse(
+            exercise_id="ex_practice_default",
+            prompt="Translate to Spanish: 'Hello'",
+            type="multiple_choice",
+            correct_answer="Hola",
+            data={"options": ["Hola", "Adiós", "Gracias", "Por favor"]},
+        )
+
+    def submit_practice_answer(
+        self, user_id: str, exercise_id: str, answer: Union[str, Dict[str, Any], List[Any]]
+    ) -> PracticeSubmissionResponse:
+        stats = self.refresh_hearts(user_id)
+
+        if stats.hearts >= settings.MAX_HEARTS:
+            raise ValidationError("You already have full hearts.", code="HEARTS_FULL")
+
+        current_time = self.clock.now()
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+
+        # Enforce Practice Cooldown
+        if stats.last_practice_recovery_at:
+            last_pract = stats.last_practice_recovery_at
+            if last_pract.tzinfo is None:
+                last_pract = last_pract.replace(tzinfo=timezone.utc)
+            cooldown_seconds = settings.PRACTICE_RECOVERY_COOLDOWN_MINUTES * 60
+            if (current_time - last_pract).total_seconds() < cooldown_seconds:
+                raise ValidationError(
+                    "Practice recovery is temporarily unavailable.", code="PRACTICE_COOLDOWN"
+                )
+
+        # Validate Practice Answer
+        exercise = self.db.query(ExerciseModel).filter(ExerciseModel.id == exercise_id).first()
+        correct_ans = exercise.correct_answer if exercise else "Hola"
+
+        ans_str = str(answer).strip().lower()
+        target_str = str(correct_ans).strip().lower()
+        is_correct = (ans_str == target_str)
+
+        if is_correct:
+            stats.hearts = min(settings.MAX_HEARTS, stats.hearts + 1)
+            stats.last_practice_recovery_at = current_time
+            if stats.hearts >= settings.MAX_HEARTS:
+                stats.last_heart_regeneration_at = None
+            self.db.commit()
+
+        return PracticeSubmissionResponse(
+            is_correct=is_correct,
+            correct_answer=correct_ans,
+            hearts=stats.hearts,
+            max_hearts=settings.MAX_HEARTS,
+            recovered=1 if is_correct else 0,
+        )
+
+    def refill_hearts(self, user_id: str) -> HeartRefillResponse:
         stats = self.repository.get_user_stats(user_id)
         if not stats:
             raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
 
+        stats.hearts = settings.MAX_HEARTS
+        stats.last_heart_regeneration_at = None
+        self.db.commit()
+
+        return HeartRefillResponse(
+            hearts=settings.MAX_HEARTS,
+            max_hearts=settings.MAX_HEARTS,
+            refilled=True,
+        )
+
+    def award_lesson_xp(self, user_id: str, xp_amount: int) -> int:
+        stats = self.repository.get_user_stats(user_id)
+        if not stats:
+            raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
         stats.total_xp += max(0, xp_amount)
         self.db.flush()
         return stats.total_xp
@@ -122,20 +259,14 @@ class GamificationService:
     def update_streak_and_daily_goal(
         self, user_id: str, xp_earned: int, activity_date_override: Optional[date] = None
     ) -> Dict[str, Any]:
-        """
-        Calculates and updates user's current streak, longest streak, and daily goal completion.
-        Executed inside the lesson completion database transaction.
-        """
         stats = self.repository.get_user_stats(user_id)
         if not stats:
             raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
 
-        current_date = activity_date_override or get_current_activity_date()
+        current_date = activity_date_override or date.today()
         last_active = stats.last_active_date
-
         streak_increased = False
 
-        # Deterministic Streak Algorithm
         if last_active is None:
             stats.current_streak = 1
             streak_increased = True
@@ -187,10 +318,6 @@ class GamificationService:
         }
 
     def evaluate_achievements(self, user_id: str, commit: bool = True) -> List[AchievementResponse]:
-        """
-        Data-driven achievement evaluation. Checks user state against achievement requirements
-        and idempotently grants newly unlocked achievements.
-        """
         all_achievements = self.db.query(AchievementModel).all()
         user_earned = self.repository.get_user_achievements(user_id)
         earned_ids = {ua.achievement_id for ua in user_earned}
@@ -199,7 +326,6 @@ class GamificationService:
         total_xp = stats.total_xp if stats else 0
         current_streak = stats.current_streak if stats else 0
 
-        # Unique completed lessons count
         completed_attempts = (
             self.db.query(LessonAttemptModel)
             .filter(
@@ -272,7 +398,6 @@ class GamificationService:
             is_earned = ach.id in earned_records
             earned_at = earned_records.get(ach.id)
 
-            # Determine progress for locked achievements
             curr_val = 0
             if ach.requirement_type == "lessons_completed":
                 curr_val = lessons_completed_count

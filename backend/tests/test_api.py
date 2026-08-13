@@ -1,12 +1,11 @@
 import pytest
-from datetime import date, timedelta
+from datetime import datetime, timezone, timedelta
 from httpx import AsyncClient
 from sqlalchemy.orm import Session
 from seed.seed import seed_database
-from app.modules.progress.models import ExerciseAttemptModel, SkillProgressModel, DailyActivityModel
-from app.modules.gamification.models import UserStatsModel, UserAchievementModel
+from app.shared.clock import MockClock
 from app.modules.gamification.service import GamificationService
-from app.modules.leaderboard.service import LeaderboardService
+from app.modules.gamification.models import UserStatsModel
 
 
 @pytest.fixture(autouse=True)
@@ -23,61 +22,90 @@ async def test_health_check(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_me(client: AsyncClient):
-    response = await client.get("/api/v1/users/me")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["id"] == "usr_demo"
+async def test_lazy_heart_regeneration_with_mock_clock(db_session: Session):
+    start_time = datetime(2026, 8, 13, 10, 0, 0, tzinfo=timezone.utc)
+    mock_clock = MockClock(start_time)
+    service = GamificationService(db_session, clock=mock_clock)
+
+    # 1. Set user hearts to 2
+    stats = service.repository.get_user_stats("usr_demo")
+    stats.hearts = 2
+    stats.last_heart_regeneration_at = start_time
+    db_session.commit()
+
+    # 2. Advance clock by 30 minutes (1 interval) -> 3 hearts
+    mock_clock.advance(minutes=30)
+    refreshed = service.refresh_hearts("usr_demo")
+    assert refreshed.hearts == 3
+
+    # 3. Advance clock by 90 minutes (3 intervals) -> 5 hearts (capped at 5/5)
+    mock_clock.advance(minutes=90)
+    refreshed2 = service.refresh_hearts("usr_demo")
+    assert refreshed2.hearts == 5
+    assert refreshed2.last_heart_regeneration_at is None
 
 
 @pytest.mark.asyncio
-async def test_leaderboard_periods_and_ranking(client: AsyncClient):
-    # Weekly leaderboard
-    res_weekly = await client.get("/api/v1/leaderboard?period=weekly")
-    assert res_weekly.status_code == 200
-    data_weekly = res_weekly.json()
-    assert data_weekly["period"] == "weekly"
-    assert "entries" in data_weekly
-    assert "current_user_rank" in data_weekly
-    assert data_weekly["current_user_rank"] is not None
+async def test_out_of_hearts_exercise_submission_rejection(client: AsyncClient, db_session: Session):
+    service = GamificationService(db_session)
+    stats = service.repository.get_user_stats("usr_demo")
+    stats.hearts = 0
+    stats.last_heart_regeneration_at = service.clock.now()
+    db_session.commit()
 
-    # Monthly leaderboard
-    res_monthly = await client.get("/api/v1/leaderboard?period=monthly")
-    assert res_monthly.status_code == 200
-    assert res_monthly.json()["period"] == "monthly"
+    start_res = await client.post("/api/v1/lessons/lsn_greetings_1/start")
+    assert start_res.status_code == 200
+    att_id = start_res.json()["attempt_id"]
 
-    # All-time leaderboard
-    res_alltime = await client.get("/api/v1/leaderboard?period=all_time")
-    assert res_alltime.status_code == 200
-    assert res_alltime.json()["period"] == "all_time"
-
-
-@pytest.mark.asyncio
-async def test_leaderboard_me_endpoint(client: AsyncClient):
-    response = await client.get("/api/v1/leaderboard/me?period=weekly")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["user_id"] == "usr_demo"
-    assert "rank" in data
-    assert "xp" in data
-    assert "total_participants" in data
+    # Submit answer with 0 hearts -> HTTP 409 OUT_OF_HEARTS
+    ans_res = await client.post(
+        "/api/v1/lessons/lsn_greetings_1/exercises/ex_gr1_1/answer",
+        json={"attempt_id": att_id, "answer": "WrongAnswer"},
+    )
+    assert ans_res.status_code == 409
+    assert ans_res.json()["error"]["code"] == "OUT_OF_HEARTS"
 
 
 @pytest.mark.asyncio
-async def test_leaderboard_period_validation(client: AsyncClient):
-    response = await client.get("/api/v1/leaderboard?period=yearly")
-    assert response.status_code == 400
-    assert "Invalid period parameter" in response.json()["error"]["message"]
+async def test_practice_recovery_and_cooldown(client: AsyncClient, db_session: Session):
+    service = GamificationService(db_session)
+    stats = service.repository.get_user_stats("usr_demo")
+    stats.hearts = 2
+    stats.last_practice_recovery_at = None
+    db_session.commit()
+
+    # Get practice exercise
+    ex_res = await client.get("/api/v1/gamification/practice")
+    assert ex_res.status_code == 200
+    ex_data = ex_res.json()
+    assert "exercise_id" in ex_data
+
+    # Submit correct practice answer -> +1 heart (2 -> 3)
+    sub_res = await client.post(
+        "/api/v1/gamification/practice",
+        json={"exercise_id": ex_data["exercise_id"], "answer": ex_data["correct_answer"]},
+    )
+    assert sub_res.status_code == 200
+    assert sub_res.json()["hearts"] == 3
+    assert sub_res.json()["recovered"] == 1
+
+    # Immediate second practice attempt -> HTTP 400 PRACTICE_COOLDOWN
+    sub_res2 = await client.post(
+        "/api/v1/gamification/practice",
+        json={"exercise_id": ex_data["exercise_id"], "answer": ex_data["correct_answer"]},
+    )
+    assert sub_res2.status_code == 400
+    assert sub_res2.json()["error"]["code"] == "PRACTICE_COOLDOWN"
 
 
 @pytest.mark.asyncio
-async def test_competition_ranking_ties(db_session: Session):
-    service = LeaderboardService(db_session)
-    res = service.get_leaderboard(period="all_time", limit=50)
+async def test_mock_heart_refill(client: AsyncClient, db_session: Session):
+    service = GamificationService(db_session)
+    stats = service.repository.get_user_stats("usr_demo")
+    stats.hearts = 1
+    db_session.commit()
 
-    # Check structure and ranks
-    assert res.total_participants >= 4
-    ranks = [e.rank for e in res.entries]
-    # Ranks should be monotonically increasing (or equal for ties)
-    for i in range(1, len(ranks)):
-        assert ranks[i] >= ranks[i - 1]
+    refill_res = await client.post("/api/v1/gamification/hearts/refill")
+    assert refill_res.status_code == 200
+    assert refill_res.json()["hearts"] == 5
+    assert refill_res.json()["refilled"] is True

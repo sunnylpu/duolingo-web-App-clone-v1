@@ -42,10 +42,10 @@ class NotFoundError(AppException):
 
 
 class ValidationError(AppException):
-    def __init__(self, message: str = "Validation failed", details: Optional[Any] = None):
+    def __init__(self, message: str = "Validation failed", code: str = "VALIDATION_ERROR", details: Optional[Any] = None):
         super().__init__(
             message=message,
-            code="VALIDATION_ERROR",
+            code=code,
             status_code=status.HTTP_400_BAD_REQUEST,
             details=details,
         )
