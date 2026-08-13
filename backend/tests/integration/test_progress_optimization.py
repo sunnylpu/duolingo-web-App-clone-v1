@@ -46,7 +46,7 @@ def demo_user(seeded_db: Session):
 def test_path_response_structure(seeded_db: Session, demo_user: UserModel):
     """Verify PathResponse contains course, units, and skills with required fields."""
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(demo_user)
+    path = service.get_learning_path(demo_user, course_id="crs_spanish")
 
     assert path.course is not None
     assert path.course.id == "crs_spanish"
@@ -66,7 +66,7 @@ def test_path_response_structure(seeded_db: Session, demo_user: UserModel):
 def test_first_skill_is_available(seeded_db: Session, demo_user: UserModel):
     """The first skill with no prerequisite must be 'available' or 'in_progress'."""
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(demo_user)
+    path = service.get_learning_path(demo_user, course_id="crs_spanish")
 
     first_skill = path.units[0].skills[0]
     assert first_skill.status in ("available", "in_progress", "completed")
@@ -80,7 +80,7 @@ def test_locked_skill_stays_locked_without_completed_prerequisite(seeded_db: Ses
     seeded_db.commit()
 
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(user)
+    path = service.get_learning_path(user, course_id="crs_spanish")
 
     # skill_basics requires skill_greetings — should be locked for fresh user
     all_skills = {s.id: s for unit in path.units for s in unit.skills}
@@ -110,7 +110,7 @@ def test_completing_prerequisite_unlocks_next_skill(seeded_db: Session):
     seeded_db.commit()
 
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(user)
+    path = service.get_learning_path(user, course_id="crs_spanish")
 
     all_skills = {s.id: s for unit in path.units for s in unit.skills}
     assert all_skills["skill_greetings"].status == "completed"
@@ -136,7 +136,7 @@ def test_in_progress_status_with_partial_lesson_completion(seeded_db: Session):
     seeded_db.commit()
 
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(user)
+    path = service.get_learning_path(user, course_id="crs_spanish")
 
     all_skills = {s.id: s for unit in path.units for s in unit.skills}
     gr = all_skills["skill_greetings"]
@@ -164,7 +164,7 @@ def test_completion_percent_accuracy(seeded_db: Session):
     seeded_db.commit()
 
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(user)
+    path = service.get_learning_path(user, course_id="crs_spanish")
 
     all_skills = {s.id: s for unit in path.units for s in unit.skills}
     gr = all_skills["skill_greetings"]
@@ -191,7 +191,7 @@ def test_crown_level_increases_with_completed_lessons(seeded_db: Session):
     seeded_db.commit()
 
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(user)
+    path = service.get_learning_path(user, course_id="crs_spanish")
     all_skills = {s.id: s for unit in path.units for s in unit.skills}
     assert all_skills["skill_greetings"].crown_level == min(5, 2)
 
@@ -213,7 +213,7 @@ def test_recommended_skill_id_points_to_in_progress(seeded_db: Session):
     seeded_db.commit()
 
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(user)
+    path = service.get_learning_path(user, course_id="crs_spanish")
 
     # skill_greetings should be in_progress; should be recommended
     assert path.recommended_skill_id == "skill_greetings"
@@ -226,7 +226,7 @@ def test_recommended_skill_id_falls_back_to_available(seeded_db: Session):
     seeded_db.commit()
 
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(user)
+    path = service.get_learning_path(user, course_id="crs_spanish")
 
     # Fresh user — recommended should be the first available skill
     assert path.recommended_skill_id == "skill_greetings"
@@ -249,7 +249,7 @@ def test_query_efficiency_skill_map_built_in_memory(seeded_db: Session, demo_use
     The path response must remain structurally valid.
     """
     service = ProgressService(seeded_db)
-    path = service.get_learning_path(demo_user)
+    path = service.get_learning_path(demo_user, course_id="crs_spanish")
 
     # Structural sanity after eager loading
     skill_ids = [s.id for unit in path.units for s in unit.skills]

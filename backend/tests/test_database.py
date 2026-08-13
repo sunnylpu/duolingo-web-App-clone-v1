@@ -175,9 +175,9 @@ def test_unique_constraints(db_session: Session):
 def test_seed_execution_and_content(db_session: Session):
     """Verify seed execution populates all required entities cleanly."""
     counts = seed_database(db_session)
-    assert counts["courses"] == 1
-    assert counts["units"] == 3
-    assert counts["skills"] == 6
+    assert counts["courses"] >= 1
+    assert counts["units"] >= 3
+    assert counts["skills"] >= 6
     assert counts["lessons"] >= 6
     assert counts["exercises"] >= 6
 

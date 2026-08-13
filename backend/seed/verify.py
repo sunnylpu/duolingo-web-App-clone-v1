@@ -30,7 +30,28 @@ def verify_database_seed() -> bool:
         else:
             logger.info(f"✓ Found {len(courses)} active course(s).")
 
-        # 2. Units & Skills
+        # 2. English Flagship Course Verification
+        en_course = db.query(CourseModel).filter(CourseModel.id == "crs_english").first()
+        if en_course:
+            en_units = db.query(UnitModel).filter(UnitModel.course_id == "crs_english").all()
+            en_unit_ids = [u.id for u in en_units]
+            en_skills = db.query(SkillModel).filter(SkillModel.unit_id.in_(en_unit_ids)).all() if en_unit_ids else []
+            en_skill_ids = [s.id for s in en_skills]
+            en_lessons = db.query(LessonModel).filter(LessonModel.skill_id.in_(en_skill_ids)).all() if en_skill_ids else []
+            en_lesson_ids = [l.id for l in en_lessons]
+            en_exercises = db.query(ExerciseModel).filter(ExerciseModel.lesson_id.in_(en_lesson_ids)).all() if en_lesson_ids else []
+
+            logger.info(f"✓ English Flagship Course: {len(en_units)} units, {len(en_skills)} skills, {len(en_lessons)} lessons, {len(en_exercises)} exercises.")
+            if len(en_units) < 8:
+                errors.append(f"English course expected 8 units, found {len(en_units)}")
+            if len(en_skills) < 32:
+                errors.append(f"English course expected 32 skills, found {len(en_skills)}")
+            if len(en_lessons) < 96:
+                errors.append(f"English course expected 96 lessons, found {len(en_lessons)}")
+            if len(en_exercises) < 576:
+                errors.append(f"English course expected 576 exercises, found {len(en_exercises)}")
+
+        # 3. Units & Skills General Count
         units = db.query(UnitModel).all()
         if len(units) < 1:
             errors.append("Expected at least 1 unit in seed data.")
@@ -39,9 +60,9 @@ def verify_database_seed() -> bool:
         if len(skills) < 4:
             errors.append(f"Expected at least 4 skills, found {len(skills)}.")
         else:
-            logger.info(f"✓ Found {len(skills)} skills.")
+            logger.info(f"✓ Found {len(skills)} total skills across all courses.")
 
-        # 3. Lessons & Exercises
+        # 4. Lessons & Exercises
         lessons = db.query(LessonModel).all()
         if len(lessons) < 4:
             errors.append(f"Expected at least 4 lessons, found {len(lessons)}.")
@@ -60,23 +81,23 @@ def verify_database_seed() -> bool:
         if missing_types:
             errors.append(f"Missing required exercise types: {missing_types}")
         else:
-            logger.info(f"✓ Found all {len(required_types)} required exercise types across {len(exercises)} exercises.")
+            logger.info(f"✓ Found all {len(required_types)} required exercise types across {len(exercises)} total exercises.")
 
-        # 4. Demo User
+        # 5. Demo User
         demo_user = db.query(UserModel).filter(UserModel.id == "usr_demo").first()
         if not demo_user:
             errors.append("Demo user 'usr_demo' not found.")
         else:
             logger.info("✓ Demo user 'usr_demo' verified.")
 
-        # 5. Achievements
+        # 6. Achievements
         achievements = db.query(AchievementModel).all()
         if len(achievements) < 4:
             errors.append(f"Expected at least 4 achievements, found {len(achievements)}.")
         else:
             logger.info(f"✓ Found {len(achievements)} achievements.")
 
-        # 6. Leaderboard Users
+        # 7. Leaderboard Users
         lb_entries = db.query(LeaderboardEntryModel).all()
         if len(lb_entries) < 1:
             errors.append("No leaderboard entries found.")

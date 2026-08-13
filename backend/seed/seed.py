@@ -14,6 +14,8 @@ from app.modules.gamification.repository import GamificationRepository
 from app.modules.leaderboard.repository import LeaderboardRepository
 
 from seed.course_data import COURSE_DATA
+from seed.generators.course_generator import generate_course
+from seed.catalogs.english import ENGLISH_COURSE_SPEC
 from seed.achievement_data import ACHIEVEMENTS
 from seed.user_data import (
     DEMO_USER,
@@ -65,63 +67,69 @@ def seed_database(db: Session) -> dict:
         )
         counts["achievements"] += 1
 
-    # 2. Seed Course Hierarchy (Course -> Units -> Skills -> Lessons -> Exercises)
-    course_repo.create_or_update_course(
-        course_id=COURSE_DATA["id"],
-        name=COURSE_DATA["name"],
-        code=COURSE_DATA["code"],
-        source_language=COURSE_DATA["source_language"],
-        target_language=COURSE_DATA["target_language"],
-        description=COURSE_DATA["description"],
-    )
-    counts["courses"] += 1
+    # 2. Seed Courses (Spanish legacy + English flagship)
+    courses_to_seed = [
+        generate_course(ENGLISH_COURSE_SPEC),  # Flagship English course (8 units, 32 skills, 96 lessons, ~576 exercises)
+        COURSE_DATA,                            # Existing Spanish course
+    ]
 
-    for unit_data in COURSE_DATA["units"]:
-        course_repo.create_or_update_unit(
-            unit_id=unit_data["id"],
-            course_id=COURSE_DATA["id"],
-            title=unit_data["title"],
-            description=unit_data["description"],
-            order_index=unit_data["order_index"],
+    for c_data in courses_to_seed:
+        course_repo.create_or_update_course(
+            course_id=c_data["id"],
+            name=c_data["name"],
+            code=c_data["code"],
+            source_language=c_data["source_language"],
+            target_language=c_data["target_language"],
+            description=c_data["description"],
         )
-        counts["units"] += 1
+        counts["courses"] += 1
 
-        for skill_data in unit_data["skills"]:
-            lesson_repo.create_or_update_skill(
-                skill_id=skill_data["id"],
+        for unit_data in c_data["units"]:
+            course_repo.create_or_update_unit(
                 unit_id=unit_data["id"],
-                title=skill_data["title"],
-                description=skill_data["description"],
-                order_index=skill_data["order_index"],
-                xp_reward=skill_data["xp_reward"],
-                prerequisite_skill_id=skill_data["prerequisite_skill_id"],
+                course_id=c_data["id"],
+                title=unit_data["title"],
+                description=unit_data["description"],
+                order_index=unit_data["order_index"],
             )
-            counts["skills"] += 1
+            counts["units"] += 1
 
-            for lsn_data in skill_data["lessons"]:
-                lesson_repo.create_or_update_lesson(
-                    lesson_id=lsn_data["id"],
+            for skill_data in unit_data["skills"]:
+                lesson_repo.create_or_update_skill(
                     skill_id=skill_data["id"],
-                    title=lsn_data["title"],
-                    description=lsn_data["description"],
-                    order_index=lsn_data["order_index"],
-                    xp_reward=lsn_data["xp_reward"],
-                    estimated_minutes=lsn_data["estimated_minutes"],
+                    unit_id=unit_data["id"],
+                    title=skill_data["title"],
+                    description=skill_data["description"],
+                    order_index=skill_data["order_index"],
+                    xp_reward=skill_data["xp_reward"],
+                    prerequisite_skill_id=skill_data["prerequisite_skill_id"],
                 )
-                counts["lessons"] += 1
+                counts["skills"] += 1
 
-                for ex_data in lsn_data["exercises"]:
-                    lesson_repo.create_or_update_exercise(
-                        exercise_id=ex_data["id"],
+                for lsn_data in skill_data["lessons"]:
+                    lesson_repo.create_or_update_lesson(
                         lesson_id=lsn_data["id"],
-                        type=ex_data["type"],
-                        prompt=ex_data["prompt"],
-                        correct_answer=ex_data["correct_answer"],
-                        data=ex_data["data"],
-                        order_index=ex_data["order_index"],
-                        xp_reward=ex_data["xp_reward"],
+                        skill_id=skill_data["id"],
+                        title=lsn_data["title"],
+                        description=lsn_data["description"],
+                        order_index=lsn_data["order_index"],
+                        xp_reward=lsn_data["xp_reward"],
+                        estimated_minutes=lsn_data["estimated_minutes"],
                     )
-                    counts["exercises"] += 1
+                    counts["lessons"] += 1
+
+                    for ex_data in lsn_data["exercises"]:
+                        lesson_repo.create_or_update_exercise(
+                            exercise_id=ex_data["id"],
+                            lesson_id=lsn_data["id"],
+                            type=ex_data["type"],
+                            prompt=ex_data["prompt"],
+                            correct_answer=ex_data["correct_answer"],
+                            data=ex_data["data"],
+                            order_index=ex_data["order_index"],
+                            xp_reward=ex_data["xp_reward"],
+                        )
+                        counts["exercises"] += 1
 
     # 3. Seed Demo Learner User & UserStats
     user_repo.create_or_update_user(
