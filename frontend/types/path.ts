@@ -9,6 +9,7 @@ export interface SkillPath {
   order_index: number;
   xp_reward: number;
   prerequisite_skill_id: string | null;
+  prerequisite_title?: string | null;
   status: SkillStatus;
   completion_percent: number;
   crown_level: number;
@@ -24,5 +25,6 @@ export interface UnitPath {
 
 export interface PathResponse {
   course: CourseSummary;
+  recommended_skill_id?: string | null;
   units: UnitPath[];
 }

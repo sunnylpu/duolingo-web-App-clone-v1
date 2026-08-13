@@ -9,6 +9,8 @@ class SkillProgressSummary(BaseModel):
     crown_level: int
     lessons_completed: int
     xp_earned: int
+    prerequisite_skill_id: Optional[str] = None
+    prerequisite_title: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

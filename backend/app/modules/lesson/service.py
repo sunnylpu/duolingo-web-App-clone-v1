@@ -42,6 +42,14 @@ class LessonService:
         if not lesson:
             raise NotFoundError(f"Lesson with ID '{lesson_id}' was not found.")
 
+        # Business Access Control: Validate progression status for skill
+        from app.modules.progress.service import ProgressService
+        progress_service = ProgressService(self.db)
+        skill_state = progress_service.get_skill_status(current_user.id, lesson.skill_id)
+
+        if skill_state.get("status") == "locked":
+            raise ConflictError("Complete the prerequisite skill first.", code="SKILL_LOCKED")
+
         existing_attempt = self.repository.get_active_lesson_attempt(
             user_id=current_user.id, lesson_id=lesson_id
         )

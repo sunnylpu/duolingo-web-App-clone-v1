@@ -37,6 +37,7 @@ class SkillPathResponse(BaseModel):
     order_index: int
     xp_reward: int
     prerequisite_skill_id: Optional[str] = None
+    prerequisite_title: Optional[str] = None
     status: str = "locked"  # locked, available, in_progress, completed
     completion_percent: float = 0.0
     crown_level: int = 0
@@ -56,6 +57,7 @@ class UnitPathResponse(BaseModel):
 
 class PathResponse(BaseModel):
     course: CourseSummaryResponse
+    recommended_skill_id: Optional[str] = None
     units: List[UnitPathResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

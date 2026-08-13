@@ -48,7 +48,9 @@ export const SkillPreview: React.FC<SkillPreviewProps> = ({
                 Skill Locked
               </h3>
               <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
-                Complete the previous skill on your path to unlock &quot;{skill.title}&quot;.
+                {skill.prerequisite_title
+                  ? `Complete "${skill.prerequisite_title}" to unlock "${skill.title}".`
+                  : `Complete the previous prerequisite skill to unlock "${skill.title}".`}
               </p>
             </div>
             <Button variant="outline" onClick={onClose} className="w-full">
