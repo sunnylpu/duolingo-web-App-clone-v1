@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.config import settings
-from app.shared.database import init_db
+from app.shared.database import init_db, get_db
 from app.shared.logging import setup_logging
 from app.shared.middleware import setup_middleware
 from app.shared.errors import setup_exception_handlers
@@ -35,11 +37,25 @@ setup_middleware(app)
 setup_exception_handlers(app)
 
 
-# Standard application health check endpoint
+# Standard & Kubernetes Liveness Probe
 @app.get("/health", tags=["System"], summary="Application health status")
-def health_check():
-    """Returns operational status of the service."""
+@app.get("/health/live", tags=["System"], summary="Liveness probe")
+def liveness_check():
+    """Returns operational process liveness status."""
     return {"status": "ok"}
+
+
+# Kubernetes Readiness Probe
+@app.get("/health/ready", tags=["System"], summary="Readiness probe")
+def readiness_check(response: Response, db: Session = Depends(get_db)):
+    """Verifies service readiness and database connectivity (SELECT 1)."""
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ready", "database": "connected"}
+    except Exception as exc:
+        logger.error(f"Readiness probe failed database check: {exc}")
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {"status": "unhealthy", "database": "disconnected", "error": str(exc)}
 
 
 # Include versioned API router (/api/v1)

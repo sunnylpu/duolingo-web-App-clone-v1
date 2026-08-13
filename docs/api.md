@@ -1,167 +1,91 @@
-# Duolingo Clone API Documentation (Phase 03)
+# Duolingo Platform REST API Reference
 
-## Versioning & Base URL
-
-All application endpoints are versioned under:
-`http://localhost:8000/api/v1`
-
-Interactive Swagger UI: `http://localhost:8000/docs`
-ReDoc Documentation: `http://localhost:8000/redoc`
+Centralized reference for all REST API endpoints served under prefix `/api/v1`.
 
 ---
 
-## Architecture Flow
+## 1. System & Health Probes
 
-Every API endpoint follows strict layer separation:
-$$\text{HTTP Request} \longrightarrow \text{FastAPI Router} \longrightarrow \text{Domain Service} \longrightarrow \text{Domain Repository} \longrightarrow \text{SQLAlchemy} \longrightarrow \text{SQLite/PostgreSQL}$$
-
----
-
-## Summary of Versioned Endpoints
-
-| Group | Method | Endpoint | Description |
-| :--- | :--- | :--- | :--- |
-| **System** | `GET` | `/health` | Application health check |
-| **Users** | `GET` | `/api/v1/users/me` | Current demo learner profile |
-| **Users** | `GET` | `/api/v1/users/me/stats` | Current demo learner statistics |
-| **Courses** | `GET` | `/api/v1/courses` | List all active language courses |
-| **Courses** | `GET` | `/api/v1/courses/{course_id}` | Detailed course info with unit list |
-| **Learning Path**| `GET` | `/api/v1/path` | Structured learning path (Course -> Units -> Skills) |
-| **Lessons** | `GET` | `/api/v1/lessons/{lesson_id}` | Lesson details with all exercises |
-| **Progress** | `GET` | `/api/v1/progress` | User skill progress summary |
-| **Gamification** | `GET` | `/api/v1/gamification/stats` | Read-only XP, streak, hearts, gems stats |
-| **Leaderboard** | `GET` | `/api/v1/leaderboard` | Ranked standings (`?period=weekly\|monthly\|all_time`) |
-| **Achievements** | `GET` | `/api/v1/achievements` | Platform achievements definition list |
-| **Achievements** | `GET` | `/api/v1/users/me/achievements` | Achievements unlocked by current learner |
+| Endpoint | Method | Description | Response |
+|---|---|---|---|
+| `/health` | `GET` | Application liveness probe | `{"status": "ok"}` |
+| `/health/live` | `GET` | Kubernetes liveness probe | `{"status": "ok"}` |
+| `/health/ready` | `GET` | Kubernetes readiness probe (SELECT 1) | `{"status": "ready", "database": "connected"}` |
 
 ---
 
-## Endpoint Payload Examples
+## 2. User & Profile Domain
 
-### 1. Current Demo Learner Profile
-`GET /api/v1/users/me`
-```json
-{
-  "id": "usr_demo",
-  "username": "demolearner",
-  "display_name": "Demo Learner",
-  "email": "demo@duolingo.clone",
-  "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=demolearner",
-  "is_active": true
-}
-```
-
-### 2. User Stats
-`GET /api/v1/users/me/stats`
-```json
-{
-  "total_xp": 150,
-  "current_streak": 7,
-  "longest_streak": 12,
-  "hearts": 5,
-  "gems": 450,
-  "daily_goal_xp": 20,
-  "daily_xp": 25
-}
-```
-
-### 3. Learning Path
-`GET /api/v1/path`
-```json
-{
-  "course": {
-    "id": "crs_spanish",
-    "name": "Spanish",
-    "code": "es",
-    "source_language": "en",
-    "target_language": "es",
-    "description": "Learn Spanish from scratch",
-    "is_active": true
-  },
-  "units": [
-    {
-      "id": "unit_01",
-      "title": "Unit 1: Greetings & Introduction",
-      "description": "Master basic greetings",
-      "order_index": 1,
-      "skills": [
-        {
-          "id": "skill_greetings",
-          "title": "Greetings",
-          "description": "Say hello and goodbye",
-          "order_index": 1,
-          "xp_reward": 15,
-          "prerequisite_skill_id": null,
-          "status": "completed",
-          "completion_percent": 100.0,
-          "crown_level": 1
-        }
-      ]
-    }
-  ]
-}
-```
-
-### 4. Lesson Details & Exercises
-`GET /api/v1/lessons/lsn_greetings_1`
-```json
-{
-  "id": "lsn_greetings_1",
-  "skill_id": "skill_greetings",
-  "title": "Basic Hello",
-  "description": "Learn common greetings.",
-  "order_index": 1,
-  "xp_reward": 10,
-  "estimated_minutes": 3,
-  "exercises": [
-    {
-      "id": "ex_gr1_1",
-      "type": "multiple_choice",
-      "prompt": "What does 'hola' mean?",
-      "correct_answer": "Hello",
-      "data": { "options": ["Hello", "Goodbye", "Thanks", "Please"] },
-      "order_index": 1,
-      "xp_reward": 5
-    }
-  ]
-}
-```
-
-### 5. Leaderboard Standings
-`GET /api/v1/leaderboard?period=weekly`
-```json
-{
-  "period": "weekly",
-  "entries": [
-    {
-      "rank": 1,
-      "user_id": "usr_polyglot",
-      "username": "polyglotpete",
-      "display_name": "Polyglot Pete",
-      "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=polyglotpete",
-      "xp": 340
-    }
-  ]
-}
-```
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/users/me` | `GET` | Current active user profile |
+| `/api/v1/users/me/stats` | `GET` | User gamification statistics |
+| `/api/v1/users/me/profile` | `GET` | Aggregated learner profile dashboard |
 
 ---
 
-## Standard Error Response Format
+## 3. Course & Path Domain
 
-Errors return a consistent JSON schema:
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/courses` | `GET` | List active courses |
+| `/api/v1/courses/{id}` | `GET` | Get course detail with units |
+| `/api/v1/path` | `GET` | Get user learning path with dynamic skill statuses |
+| `/api/v1/progress` | `GET` | Get user skill progress summary |
+
+---
+
+## 4. Lesson Player & Exercise Domain
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/lessons/{id}` | `GET` | Get lesson detail with exercises |
+| `/api/v1/lessons/{id}/start` | `POST` | Start or resume lesson attempt |
+| `/api/v1/lessons/{id}/exercises/{exercise_id}/answer` | `POST` | Submit answer for exercise validation |
+| `/api/v1/lessons/{id}/complete` | `POST` | Complete lesson attempt & trigger rewards |
+
+---
+
+## 5. Gamification & Hearts Domain
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/gamification/stats` | `GET` | Get gamification stats & heart regeneration status |
+| `/api/v1/gamification/daily` | `GET` | Get today's daily activity & goal progress |
+| `/api/v1/gamification/practice` | `GET` | Get practice exercise for heart recovery |
+| `/api/v1/gamification/practice` | `POST` | Submit practice exercise answer |
+| `/api/v1/gamification/hearts/refill` | `POST` | Mock refill hearts to MAX_HEARTS |
+
+---
+
+## 6. Achievements Domain
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/achievements` | `GET` | List all platform achievements |
+| `/api/v1/users/me/achievements` | `GET` | Get user achievements with progress metrics |
+
+---
+
+## 7. Leaderboard Domain
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/leaderboard` | `GET` | Get period standings (`weekly`, `monthly`, `all_time`) |
+| `/api/v1/leaderboard/me` | `GET` | Get current user's rank |
+
+---
+
+## 8. Standard Error Format
+
+All error responses strictly adhere to:
+
 ```json
 {
   "error": {
-    "code": "NOT_FOUND",
-    "message": "Course with ID 'invalid_id' was not found.",
+    "code": "SKILL_LOCKED",
+    "message": "Complete the prerequisite skill first.",
     "details": null
   }
 }
 ```
-
-### Standard Status Codes
-- `HTTP 200 OK`: Successful retrieval
-- `HTTP 400 Bad Request`: Validation error (e.g. invalid query parameter)
-- `HTTP 404 Not Found`: Resource does not exist
-- `HTTP 500 Internal Server Error`: Server failure masked securely

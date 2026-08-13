@@ -31,8 +31,22 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware for adding modern HTTP security headers to all responses.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
+
 def setup_middleware(app: FastAPI) -> None:
-    """Configure CORS and request logging middlewares on FastAPI application."""
+    """Configure CORS, request logging, and security headers middlewares on FastAPI application."""
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -41,3 +55,4 @@ def setup_middleware(app: FastAPI) -> None:
         allow_headers=["*"],
     )
     app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
