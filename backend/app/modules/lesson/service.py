@@ -235,7 +235,7 @@ class LessonService:
                 "Not all exercises have been answered.", details={"code": "LESSON_NOT_COMPLETE"}
             )
 
-        # 6. Transactional completion, XP awarding, activity recording, and skill progress update
+        # 6. Transactional completion, XP awarding, activity recording, streak & skill progress update
         try:
             total_count = len(lesson_exercises)
             correct_count = sum(1 for ex in attempt.exercise_attempts if ex.is_correct)
@@ -250,8 +250,10 @@ class LessonService:
             # Award XP
             self.gamification_service.award_lesson_xp(current_user.id, lesson.xp_reward)
 
-            # Record Daily Activity
-            today_date = date.today()
+            # Record Daily Activity using configurable APP_TIMEZONE
+            from app.modules.gamification.service import get_current_activity_date
+            today_date = get_current_activity_date()
+
             act_id = f"act_{uuid.uuid4().hex[:12]}"
             self.progress_repository.record_daily_activity(
                 activity_id=act_id,
@@ -260,6 +262,13 @@ class LessonService:
                 xp_earned=lesson.xp_reward,
                 lessons_completed=1,
                 commit=False,
+            )
+
+            # Calculate and update Streak + Daily Goal progress
+            streak_daily_info = self.gamification_service.update_streak_and_daily_goal(
+                user_id=current_user.id,
+                xp_earned=lesson.xp_reward,
+                activity_date_override=today_date,
             )
 
             # Update Skill Progress
@@ -316,8 +325,11 @@ class LessonService:
                 xp_earned=lesson.xp_reward,
                 score=score,
                 skill_progress=sp_data,
+                streak=streak_daily_info.get("streak"),
+                daily_progress=streak_daily_info.get("daily_progress"),
                 already_completed=False,
             )
         except Exception:
             self.db.rollback()
             raise
+

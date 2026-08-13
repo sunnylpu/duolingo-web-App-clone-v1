@@ -8,6 +8,8 @@ import { LoadingState } from "@/components/feedback/LoadingState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { DailyActivitySummary } from "@/components/gamification/DailyActivitySummary";
+import { StreakDisplay } from "@/components/gamification/StreakDisplay";
 
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -57,16 +59,19 @@ export default function ProfilePage() {
     <div className="space-y-8 max-w-4xl mx-auto">
       {/* Profile Header Card */}
       <Card className="p-6 md:p-8">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left">
-          <div className="w-20 h-20 rounded-full bg-[#58cc02] flex items-center justify-center text-black font-black text-4xl shadow-[0_4px_0_#46a302]">
-            {user.display_name.charAt(0)}
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-2xl md:text-3xl font-extrabold text-white">
-              {user.display_name}
-            </h1>
-            <p className="text-sm text-gray-400 font-medium">@{user.username}</p>
-            <p className="text-xs text-gray-500">{user.email}</p>
+        <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 text-center sm:text-left">
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 rounded-full bg-[#58cc02] flex items-center justify-center text-black font-black text-4xl shadow-[0_4px_0_#46a302]">
+              {user.display_name.charAt(0)}
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-2xl md:text-3xl font-extrabold text-white flex items-center justify-center sm:justify-start gap-3">
+                <span>{user.display_name}</span>
+                <StreakDisplay currentStreak={stats.current_streak} />
+              </h1>
+              <p className="text-sm text-gray-400 font-medium">@{user.username}</p>
+              <p className="text-xs text-gray-500">{user.email}</p>
+            </div>
           </div>
         </div>
       </Card>
@@ -80,19 +85,27 @@ export default function ProfilePage() {
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Total XP</div>
           </Card>
           <Card className="text-center">
-            <div className="text-2xl font-black text-[#ff9600]">{stats.current_streak} Days</div>
+            <div className="text-2xl font-black text-[#ff9600]">🔥 {stats.current_streak}</div>
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Current Streak</div>
           </Card>
           <Card className="text-center">
-            <div className="text-2xl font-black text-[#ff9600]">{stats.longest_streak} Days</div>
+            <div className="text-2xl font-black text-[#ff9600]">🏆 {stats.longest_streak}</div>
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Longest Streak</div>
           </Card>
           <Card className="text-center">
-            <div className="text-2xl font-black text-[#1cb0f6]">{stats.gems}</div>
+            <div className="text-2xl font-black text-[#1cb0f6]">💎 {stats.gems}</div>
             <div className="text-xs text-gray-400 font-bold uppercase mt-1">Gems</div>
           </Card>
         </div>
       </div>
+
+      {/* Today's Daily Activity Widget */}
+      <DailyActivitySummary
+        xpEarned={stats.daily_xp || 0}
+        lessonsCompleted={stats.daily_xp ? Math.ceil(stats.daily_xp / 10) : 0}
+        goalXp={stats.daily_goal_xp}
+        goalCompleted={Boolean(stats.daily_goal_completed || (stats.daily_xp >= stats.daily_goal_xp))}
+      />
 
       {/* Achievements Section */}
       <div>

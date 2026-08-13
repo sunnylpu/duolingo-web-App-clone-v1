@@ -34,6 +34,17 @@ export interface LessonCompleteResult {
     status: string;
     lessons_completed: number;
   };
+  streak?: {
+    current: number;
+    longest: number;
+    increased: boolean;
+  };
+  daily_progress?: {
+    xp: number;
+    goal: number;
+    goal_completed: boolean;
+    goal_just_completed: boolean;
+  };
   already_completed: boolean;
 }
 

@@ -15,4 +15,6 @@ export interface UserStats {
   gems: number;
   daily_goal_xp: number;
   daily_xp: number;
+  daily_goal_completed?: boolean;
+  activity_date?: string;
 }

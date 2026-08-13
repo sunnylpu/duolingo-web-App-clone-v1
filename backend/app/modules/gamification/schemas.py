@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel, ConfigDict
 
 
@@ -11,6 +11,18 @@ class GamificationStatsResponse(BaseModel):
     gems: int
     daily_goal_xp: int
     daily_xp: int
+    daily_goal_completed: bool = False
+    activity_date: str = ""
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DailyActivityResponse(BaseModel):
+    date: str
+    xp_earned: int
+    lessons_completed: int
+    goal_xp: int
+    goal_completed: bool
 
     model_config = ConfigDict(from_attributes=True)
 

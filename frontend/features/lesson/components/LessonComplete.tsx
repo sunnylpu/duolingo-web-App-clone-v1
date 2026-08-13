@@ -17,6 +17,12 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
   const progressPercent = Math.round(result?.skill_progress?.completion_percent ?? 100);
   const crownLevel = result?.skill_progress?.crown_level ?? 1;
 
+  const currentStreak = result?.streak?.current ?? 1;
+  const streakIncreased = result?.streak?.increased ?? false;
+  const dailyXp = result?.daily_progress?.xp ?? xpEarned;
+  const dailyGoalXp = result?.daily_progress?.goal ?? 30;
+  const goalJustCompleted = result?.daily_progress?.goal_just_completed ?? false;
+
   return (
     <div className="max-w-md mx-auto py-12 px-4 text-center animate-fadeIn select-none">
       <Card className="p-8 space-y-6 bg-[#182830] border-2 border-[#58cc02] shadow-2xl">
@@ -30,8 +36,23 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
           <p className="text-xs text-gray-400 font-bold mt-1">Lesson completed successfully</p>
         </div>
 
+        {/* Milestone Toasts */}
+        {streakIncreased && (
+          <div className="p-3 bg-[#ff9600]/20 border border-[#ff9600] rounded-2xl flex items-center justify-center gap-2 text-sm font-black text-[#ff9600]">
+            <span className="text-xl">🔥</span>
+            <span>Streak extended! {currentStreak} day{currentStreak > 1 ? "s" : ""}</span>
+          </div>
+        )}
+
+        {goalJustCompleted && (
+          <div className="p-3 bg-[#58cc02]/20 border border-[#58cc02] rounded-2xl flex items-center justify-center gap-2 text-sm font-black text-[#58cc02]">
+            <span className="text-xl">🎯</span>
+            <span>Daily Goal Complete! ({dailyXp} / {dailyGoalXp} XP)</span>
+          </div>
+        )}
+
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-3 py-2">
+        <div className="grid grid-cols-2 gap-3 py-1">
           <div className="p-4 bg-[#131f24] rounded-2xl border border-[#37464f]">
             <div className="text-xs text-gray-400 font-bold uppercase tracking-wider">TOTAL XP</div>
             <div className="text-2xl font-black text-[#ffc800] mt-1 flex items-center justify-center gap-1">

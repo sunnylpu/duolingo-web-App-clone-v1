@@ -7,6 +7,7 @@ from app.modules.user.models import UserModel
 from app.modules.gamification.service import GamificationService
 from app.modules.gamification.schemas import (
     GamificationStatsResponse,
+    DailyActivityResponse,
     AchievementResponse,
     UserAchievementResponse,
 )
@@ -26,6 +27,15 @@ def get_gamification_stats(
 ):
     """Return total XP, streaks, hearts, gems, and daily progress for current demo user."""
     return service.get_user_stats(current_user)
+
+
+@router.get("/daily", response_model=DailyActivityResponse, summary="Get today's activity and goal progress")
+def get_today_activity(
+    current_user: UserModel = Depends(get_current_user),
+    service: GamificationService = Depends(get_gamification_service),
+):
+    """Return today's date, XP earned, lessons completed, and daily goal completion status."""
+    return service.get_today_activity(current_user)
 
 
 @achievement_router.get("/achievements", response_model=List[AchievementResponse], summary="List all platform achievements")
