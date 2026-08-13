@@ -1,8 +1,9 @@
-import re
-from typing import List, Optional
+import json
+from typing import List, Optional, Any
 from sqlalchemy.orm import Session
 from app.modules.lesson.repository import LessonRepository
 from app.modules.gamification.service import GamificationService
+from app.modules.lesson.validators import validator_registry
 from app.modules.lesson.schemas import (
     LessonDetailResponse,
     LessonStartResponse,
@@ -19,16 +20,6 @@ class LessonService:
         self.db = db
         self.repository = LessonRepository(db)
         self.gamification_service = GamificationService(db)
-
-    def normalize_answer(self, answer: str, exercise_type: str) -> str:
-        if not answer:
-            return ""
-        cleaned = answer.strip().lower()
-        # Remove trailing punctuation like '.', '!', '?', ','
-        cleaned = re.sub(r"[.!?,\s]+$", "", cleaned)
-        cleaned = re.sub(r"^[.!?,\s]+", "", cleaned)
-        cleaned = re.sub(r"\s+", " ", cleaned)
-        return cleaned
 
     def get_lesson_detail(self, lesson_id: str) -> LessonDetailResponse:
         lesson = self.repository.get_lesson_by_id(lesson_id)
@@ -76,7 +67,7 @@ class LessonService:
         lesson_id: str,
         exercise_id: str,
         attempt_id: str,
-        user_answer: str,
+        user_answer: Any,
     ) -> AnswerSubmissionResponse:
         # 1. Validate lesson exists
         lesson = self.repository.get_lesson_by_id(lesson_id)
@@ -130,17 +121,15 @@ class LessonService:
         if current_hearts <= 0:
             raise ConflictError("You have no hearts remaining.", code="OUT_OF_HEARTS")
 
-        # 8. Answer normalization & comparison (with accepted_answers support)
-        norm_submission = self.normalize_answer(user_answer, exercise.type)
-        norm_correct = self.normalize_answer(exercise.correct_answer, exercise.type)
+        # 8. Delegate validation to ValidatorRegistry strategy
+        validator = validator_registry.get_validator(exercise.type)
+        val_result = validator.validate(exercise=exercise, submitted_answer=user_answer)
+        is_correct = val_result.is_correct
 
-        accepted_list = []
-        if exercise.data and isinstance(exercise.data, dict):
-            raw_accepted = exercise.data.get("accepted_answers", [])
-            if isinstance(raw_accepted, list):
-                accepted_list = [self.normalize_answer(ans, exercise.type) for ans in raw_accepted]
-
-        is_correct = (norm_submission == norm_correct) or (norm_submission in accepted_list)
+        # Format string representation for persistence if user_answer is structured dict/list
+        stored_answer_str = (
+            json.dumps(user_answer) if isinstance(user_answer, (dict, list)) else str(user_answer)
+        )
 
         # 9. Transactional persistence & heart deduction
         try:
@@ -154,7 +143,7 @@ class LessonService:
             self.repository.create_exercise_attempt(
                 lesson_attempt_id=attempt_id,
                 exercise_id=exercise_id,
-                answer=user_answer,
+                answer=stored_answer_str,
                 is_correct=is_correct,
                 hearts_lost=hearts_lost,
             )
@@ -164,7 +153,7 @@ class LessonService:
             return AnswerSubmissionResponse(
                 exercise_id=exercise_id,
                 is_correct=is_correct,
-                correct_answer=exercise.correct_answer,
+                correct_answer=val_result.correct_answer,
                 hearts_lost=hearts_lost,
                 hearts_remaining=hearts_remaining,
                 attempt_completed=False,

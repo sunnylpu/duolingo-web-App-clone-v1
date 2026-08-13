@@ -76,14 +76,31 @@ export const ExerciseRenderer: React.FC<ExerciseRendererProps> = ({
         />
       );
     case "match_pairs":
-      return <MatchPairsExercise exercise={exercise} />;
+      return (
+        <MatchPairsExercise
+          exercise={exercise}
+          selectedAnswer={selectedAnswer}
+          onSelectAnswer={onSelectAnswer}
+          disabled={disabled}
+          feedbackStatus={feedbackStatus}
+        />
+      );
     case "fill_blank":
-      return <FillBlankExercise exercise={exercise} />;
+      return (
+        <FillBlankExercise
+          exercise={exercise}
+          selectedAnswer={selectedAnswer}
+          onSelectAnswer={onSelectAnswer}
+          onSubmit={onSubmit}
+          disabled={disabled}
+          feedbackStatus={feedbackStatus}
+        />
+      );
     default:
       return (
-        <div className="p-8 text-center text-gray-400">
-          <p className="font-bold text-white">{exercise.prompt}</p>
-          <span className="text-xs text-gray-500 font-mono mt-2 block">
+        <div className="p-8 text-center text-[#ff4b4b] bg-[#ff4b4b]/10 border border-[#ff4b4b] rounded-2xl space-y-2">
+          <p className="font-black text-lg">Unsupported exercise type</p>
+          <span className="text-xs text-gray-400 font-mono block">
             Type: {exercise.type}
           </span>
         </div>

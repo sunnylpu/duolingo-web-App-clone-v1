@@ -43,7 +43,11 @@ COURSE_DATA = {
                                     "type": "translate",
                                     "prompt": "Translate: 'Buenos días'",
                                     "correct_answer": "Good morning",
-                                    "data": {"source": "Buenos días", "target_lang": "en"},
+                                    "data": {
+                                        "source_text": "Buenos días",
+                                        "target_lang": "en",
+                                        "accepted_answers": ["Good morning", "Good morning."]
+                                    },
                                     "order_index": 2,
                                     "xp_reward": 5,
                                 },
@@ -51,7 +55,7 @@ COURSE_DATA = {
                                     "id": "ex_gr1_3",
                                     "type": "match_pairs",
                                     "prompt": "Match the Spanish and English pairs:",
-                                    "correct_answer": "Hola:Hello,Gracias:Thank you,Adiós:Goodbye",
+                                    "correct_answer": "Hola ↔ Hello, Gracias ↔ Thank you, Adiós ↔ Goodbye",
                                     "data": {
                                         "pairs": [
                                             {"left": "Hola", "right": "Hello"},
@@ -60,6 +64,37 @@ COURSE_DATA = {
                                         ]
                                     },
                                     "order_index": 3,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_gr1_4",
+                                    "type": "type_answer",
+                                    "prompt": "Type in Spanish: 'Good evening'",
+                                    "correct_answer": "Buenas noches",
+                                    "data": {"hint": "B_____ n_____"},
+                                    "order_index": 4,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_gr1_5",
+                                    "type": "word_bank",
+                                    "prompt": "Translate to Spanish: 'See you later'",
+                                    "correct_answer": "Hasta luego",
+                                    "data": {"words": ["Hasta", "luego", "hola", "gracias", "por", "favor"]},
+                                    "order_index": 5,
+                                    "xp_reward": 5,
+                                },
+                                {
+                                    "id": "ex_gr1_6",
+                                    "type": "fill_blank",
+                                    "prompt": "Complete the sentence:",
+                                    "correct_answer": "como",
+                                    "data": {
+                                        "sentence_before": "Yo",
+                                        "blank": "___",
+                                        "sentence_after": "pan."
+                                    },
+                                    "order_index": 6,
                                     "xp_reward": 5,
                                 },
                             ],

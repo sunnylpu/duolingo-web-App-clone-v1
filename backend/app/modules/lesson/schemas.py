@@ -1,4 +1,4 @@
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -52,7 +52,7 @@ class LessonStartResponse(BaseModel):
 
 class AnswerSubmissionRequest(BaseModel):
     attempt_id: Any
-    answer: str
+    answer: Union[str, Dict[str, Any], List[Any]]
 
 
 class AnswerSubmissionResponse(BaseModel):
