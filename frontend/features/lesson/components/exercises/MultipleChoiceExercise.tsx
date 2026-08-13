@@ -1,6 +1,7 @@
 import React from "react";
 import { Exercise } from "@/types";
 import { Badge } from "@/components/ui/Badge";
+import { AudioButton } from "@/features/audio/components/AudioButton";
 
 interface MultipleChoiceExerciseProps {
   exercise: Exercise;
@@ -22,9 +23,12 @@ export const MultipleChoiceExercise: React.FC<MultipleChoiceExerciseProps> = ({
 
   return (
     <div className="space-y-6 max-w-xl mx-auto py-4">
-      <div className="flex items-center gap-2">
-        <Badge variant="blue">Multiple Choice</Badge>
-        <span className="text-xs text-gray-400 font-bold">Select the correct option</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Badge variant="blue">Multiple Choice</Badge>
+          <span className="text-xs text-gray-400 font-bold">Select the correct option</span>
+        </div>
+        <AudioButton text={exercise.prompt} />
       </div>
 
       <h2 className="text-xl sm:text-2xl font-black text-white">{exercise.prompt}</h2>
@@ -63,11 +67,14 @@ export const MultipleChoiceExercise: React.FC<MultipleChoiceExerciseProps> = ({
               }}
               className={`duo-card p-5 text-left text-base font-bold transition-all select-none cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-[#1cb0f6] disabled:opacity-60 disabled:cursor-not-allowed ${cardStyle}`}
             >
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-xl border-2 border-current flex items-center justify-center text-xs font-black shrink-0">
-                  {idx + 1}
-                </span>
-                <span>{opt}</span>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="w-7 h-7 rounded-xl border-2 border-current flex items-center justify-center text-xs font-black shrink-0">
+                    {idx + 1}
+                  </span>
+                  <span>{opt}</span>
+                </div>
+                <AudioButton text={opt} size="sm" />
               </div>
             </button>
           );
