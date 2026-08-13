@@ -38,6 +38,16 @@ class GamificationService:
         self.db.flush()
         return stats.hearts
 
+    def award_lesson_xp(self, user_id: str, xp_amount: int) -> int:
+        """Awards fixed lesson XP reward to user_stats.total_xp safely."""
+        stats = self.repository.get_user_stats(user_id)
+        if not stats:
+            raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
+
+        stats.total_xp += max(0, xp_amount)
+        self.db.flush()
+        return stats.total_xp
+
     def get_all_achievements(self) -> List[AchievementResponse]:
         achievements = self.db.query(AchievementModel).all()
         return [AchievementResponse.model_validate(a) for a in achievements]

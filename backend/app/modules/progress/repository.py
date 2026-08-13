@@ -1,3 +1,4 @@
+import uuid
 from typing import List, Optional
 from datetime import date
 from sqlalchemy.orm import Session
@@ -38,6 +39,7 @@ class ProgressRepository:
         crown_level: int = 0,
         lessons_completed: int = 0,
         xp_earned: int = 0,
+        commit: bool = True,
     ) -> SkillProgressModel:
         record = self.get_skill_progress(user_id, skill_id)
         if not record:
@@ -59,55 +61,11 @@ class ProgressRepository:
             record.lessons_completed = lessons_completed
             record.xp_earned = xp_earned
 
-        self.db.commit()
-        self.db.refresh(record)
+        self.db.flush()
+        if commit:
+            self.db.commit()
+            self.db.refresh(record)
         return record
-
-    def create_lesson_attempt(
-        self,
-        attempt_id: str,
-        user_id: str,
-        lesson_id: str,
-        status: str = "started",
-        score: int = 0,
-        xp_earned: int = 0,
-        hearts_lost: int = 0,
-    ) -> LessonAttemptModel:
-        attempt = LessonAttemptModel(
-            id=attempt_id,
-            user_id=user_id,
-            lesson_id=lesson_id,
-            status=status,
-            score=score,
-            xp_earned=xp_earned,
-            hearts_lost=hearts_lost,
-        )
-        self.db.add(attempt)
-        self.db.commit()
-        self.db.refresh(attempt)
-        return attempt
-
-    def record_exercise_attempt(
-        self,
-        exercise_attempt_id: str,
-        lesson_attempt_id: str,
-        exercise_id: str,
-        answer: str,
-        is_correct: bool,
-        hearts_lost: int = 0,
-    ) -> ExerciseAttemptModel:
-        ex_attempt = ExerciseAttemptModel(
-            id=exercise_attempt_id,
-            lesson_attempt_id=lesson_attempt_id,
-            exercise_id=exercise_id,
-            answer=answer,
-            is_correct=is_correct,
-            hearts_lost=hearts_lost,
-        )
-        self.db.add(ex_attempt)
-        self.db.commit()
-        self.db.refresh(ex_attempt)
-        return ex_attempt
 
     def record_daily_activity(
         self,
@@ -118,6 +76,7 @@ class ProgressRepository:
         lessons_completed: int = 0,
         minutes_learned: int = 0,
         goal_completed: bool = False,
+        commit: bool = True,
     ) -> DailyActivityModel:
         act = (
             self.db.query(DailyActivityModel)
@@ -144,6 +103,8 @@ class ProgressRepository:
             act.minutes_learned += minutes_learned
             act.goal_completed = goal_completed or act.goal_completed
 
-        self.db.commit()
-        self.db.refresh(act)
+        self.db.flush()
+        if commit:
+            self.db.commit()
+            self.db.refresh(act)
         return act

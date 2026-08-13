@@ -9,6 +9,8 @@ from app.modules.lesson.schemas import (
     LessonStartResponse,
     AnswerSubmissionRequest,
     AnswerSubmissionResponse,
+    LessonCompleteRequest,
+    LessonCompleteResponse,
 )
 
 router = APIRouter(prefix="/lessons", tags=["Lessons"])
@@ -53,4 +55,23 @@ def submit_exercise_answer(
         exercise_id=exercise_id,
         attempt_id=payload.attempt_id,
         user_answer=payload.answer,
+    )
+
+
+@router.post(
+    "/{lesson_id}/complete",
+    response_model=LessonCompleteResponse,
+    summary="Complete a lesson attempt and update progress",
+)
+def complete_lesson(
+    lesson_id: str,
+    payload: LessonCompleteRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: LessonService = Depends(get_lesson_service),
+):
+    """Validate exercise completions, mark attempt completed, award XP, and update skill progress."""
+    return service.complete_lesson(
+        current_user=current_user,
+        lesson_id=lesson_id,
+        attempt_id=payload.attempt_id,
     )

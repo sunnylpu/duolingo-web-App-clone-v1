@@ -1,13 +1,20 @@
+import re
+import uuid
 import json
+from datetime import datetime, date
 from typing import List, Optional, Any
 from sqlalchemy.orm import Session
 from app.modules.lesson.repository import LessonRepository
 from app.modules.gamification.service import GamificationService
+from app.modules.progress.repository import ProgressRepository
 from app.modules.lesson.validators import validator_registry
+from app.modules.lesson.models import LessonModel, SkillModel
+from app.modules.progress.models import LessonAttemptModel
 from app.modules.lesson.schemas import (
     LessonDetailResponse,
     LessonStartResponse,
     AnswerSubmissionResponse,
+    LessonCompleteResponse,
 )
 from app.modules.user.models import UserModel
 from app.shared.errors import NotFoundError, ValidationError, ConflictError
@@ -20,6 +27,7 @@ class LessonService:
         self.db = db
         self.repository = LessonRepository(db)
         self.gamification_service = GamificationService(db)
+        self.progress_repository = ProgressRepository(db)
 
     def get_lesson_detail(self, lesson_id: str) -> LessonDetailResponse:
         lesson = self.repository.get_lesson_by_id(lesson_id)
@@ -126,7 +134,6 @@ class LessonService:
         val_result = validator.validate(exercise=exercise, submitted_answer=user_answer)
         is_correct = val_result.is_correct
 
-        # Format string representation for persistence if user_answer is structured dict/list
         stored_answer_str = (
             json.dumps(user_answer) if isinstance(user_answer, (dict, list)) else str(user_answer)
         )
@@ -157,6 +164,159 @@ class LessonService:
                 hearts_lost=hearts_lost,
                 hearts_remaining=hearts_remaining,
                 attempt_completed=False,
+            )
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def complete_lesson(
+        self,
+        current_user: UserModel,
+        lesson_id: str,
+        attempt_id: str,
+    ) -> LessonCompleteResponse:
+        # 1. Validate lesson exists
+        lesson = self.repository.get_lesson_by_id(lesson_id)
+        if not lesson:
+            raise NotFoundError(f"Lesson with ID '{lesson_id}' was not found.")
+
+        # 2. Validate lesson attempt exists
+        attempt = self.repository.get_lesson_attempt_by_id(attempt_id)
+        if not attempt:
+            raise NotFoundError(f"Lesson attempt '{attempt_id}' was not found.")
+
+        # 3. Verify user ownership & lesson belonging
+        if attempt.user_id != current_user.id:
+            raise ValidationError("Lesson attempt belongs to another user.")
+        if attempt.lesson_id != lesson_id:
+            raise ValidationError(
+                f"Lesson attempt '{attempt_id}' is not for lesson '{lesson_id}'."
+            )
+
+        # Helper to compute skill progress dict for response
+        def get_skill_progress_data(skill_id: str) -> dict:
+            sp = self.progress_repository.get_skill_progress(current_user.id, skill_id)
+            if sp:
+                return {
+                    "completion_percent": sp.completion_percent,
+                    "crown_level": sp.crown_level,
+                    "status": sp.status,
+                    "lessons_completed": sp.lessons_completed,
+                }
+            return {
+                "completion_percent": 100.0,
+                "crown_level": 1,
+                "status": "completed",
+                "lessons_completed": 1,
+            }
+
+        # 4. Idempotency Check: Repeat completion requests return existing completed state
+        if attempt.status == "completed":
+            sp_data = get_skill_progress_data(lesson.skill_id)
+            return LessonCompleteResponse(
+                lesson_id=lesson_id,
+                attempt_id=attempt_id,
+                status="completed",
+                xp_earned=0,  # No duplicate XP for retries
+                score=attempt.score,
+                skill_progress=sp_data,
+                already_completed=True,
+            )
+
+        if attempt.status != "started":
+            raise ValidationError("LESSON_ATTEMPT_NOT_ACTIVE")
+
+        # 5. Check all exercises answered
+        lesson_exercises = self.repository.get_exercises_by_lesson(lesson_id)
+        answered_exercise_ids = {ex.exercise_id for ex in attempt.exercise_attempts}
+
+        if len(answered_exercise_ids) < len(lesson_exercises):
+            raise ValidationError(
+                "Not all exercises have been answered.", details={"code": "LESSON_NOT_COMPLETE"}
+            )
+
+        # 6. Transactional completion, XP awarding, activity recording, and skill progress update
+        try:
+            total_count = len(lesson_exercises)
+            correct_count = sum(1 for ex in attempt.exercise_attempts if ex.is_correct)
+            score = int(round((correct_count / total_count) * 100)) if total_count > 0 else 100
+
+            # Update LessonAttempt entity
+            attempt.status = "completed"
+            attempt.completed_at = datetime.utcnow()
+            attempt.score = score
+            attempt.xp_earned = lesson.xp_reward
+
+            # Award XP
+            self.gamification_service.award_lesson_xp(current_user.id, lesson.xp_reward)
+
+            # Record Daily Activity
+            today_date = date.today()
+            act_id = f"act_{uuid.uuid4().hex[:12]}"
+            self.progress_repository.record_daily_activity(
+                activity_id=act_id,
+                user_id=current_user.id,
+                activity_date=today_date,
+                xp_earned=lesson.xp_reward,
+                lessons_completed=1,
+                commit=False,
+            )
+
+            # Update Skill Progress
+            skill_id = lesson.skill_id
+            skill_lessons = self.repository.get_lessons_by_skill(skill_id)
+            skill_lesson_ids = {l.id for l in skill_lessons}
+
+            # Count completed lessons for this skill
+            completed_attempts = (
+                self.db.query(LessonAttemptModel)
+                .filter(
+                    LessonAttemptModel.user_id == current_user.id,
+                    LessonAttemptModel.lesson_id.in_(skill_lesson_ids),
+                    LessonAttemptModel.status == "completed",
+                )
+                .all()
+            )
+            # Unique completed lesson IDs
+            unique_completed_lessons = {a.lesson_id for a in completed_attempts}
+            unique_completed_lessons.add(lesson_id)  # Include current lesson
+
+            completed_count = len(unique_completed_lessons)
+            total_skill_lessons = max(1, len(skill_lessons))
+            completion_percent = float(min(100.0, (completed_count / total_skill_lessons) * 100.0))
+            crown_level = min(5, completed_count)
+            skill_status = "completed" if completion_percent >= 100.0 else "in_progress"
+
+            sp_id = f"sp_{uuid.uuid4().hex[:12]}"
+            self.progress_repository.upsert_skill_progress(
+                progress_id=sp_id,
+                user_id=current_user.id,
+                skill_id=skill_id,
+                status=skill_status,
+                completion_percent=completion_percent,
+                crown_level=crown_level,
+                lessons_completed=completed_count,
+                xp_earned=completed_count * lesson.xp_reward,
+                commit=False,
+            )
+
+            self.db.commit()
+
+            sp_data = {
+                "completion_percent": completion_percent,
+                "crown_level": crown_level,
+                "status": skill_status,
+                "lessons_completed": completed_count,
+            }
+
+            return LessonCompleteResponse(
+                lesson_id=lesson_id,
+                attempt_id=attempt_id,
+                status="completed",
+                xp_earned=lesson.xp_reward,
+                score=score,
+                skill_progress=sp_data,
+                already_completed=False,
             )
         except Exception:
             self.db.rollback()

@@ -8,5 +8,7 @@ export interface LessonAttempt {
 export type LessonSessionStep =
   | "intro"
   | "active_player"
+  | "completing"
+  | "completed"
   | "out_of_hearts"
-  | "sequence_complete";
+  | "error";

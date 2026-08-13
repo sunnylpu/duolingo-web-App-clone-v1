@@ -64,3 +64,19 @@ class AnswerSubmissionResponse(BaseModel):
     attempt_completed: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LessonCompleteRequest(BaseModel):
+    attempt_id: Any
+
+
+class LessonCompleteResponse(BaseModel):
+    lesson_id: str
+    attempt_id: Any
+    status: str
+    xp_earned: int
+    score: int
+    skill_progress: Dict[str, Any]
+    already_completed: bool = False
+
+    model_config = ConfigDict(from_attributes=True)

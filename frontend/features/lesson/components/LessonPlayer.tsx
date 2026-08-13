@@ -8,11 +8,12 @@ import { ExerciseRenderer } from "./ExerciseRenderer";
 import { ExerciseFeedback } from "./ExerciseFeedback";
 import { ExitConfirmationModal } from "./ExitConfirmationModal";
 import { OutOfHeartsModal } from "./OutOfHeartsModal";
+import { LessonComplete } from "./LessonComplete";
+import { LessonLoading } from "./LessonLoading";
+import { ErrorState } from "@/components/feedback/ErrorState";
 import { useLessonSession } from "../hooks/useLessonSession";
 import { useExerciseAnswer } from "../hooks/useExerciseAnswer";
 import { LessonIntro } from "./LessonIntro";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 
 interface LessonPlayerProps {
   lesson: LessonDetail;
@@ -29,9 +30,12 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
     currentExerciseIndex,
     currentExercise,
     totalExercises,
+    completionResult,
     isExitModalOpen,
     isStarting,
+    sessionError,
     startSession,
+    completeSession,
     nextExercise,
     triggerOutOfHearts,
     openExitModal,
@@ -68,7 +72,6 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
     if (!currentExercise) return;
     const res = await submitAnswer(currentExercise.id);
     if (res && res.hearts_remaining === 0 && !res.is_correct) {
-      // User ran out of hearts on this answer
       triggerOutOfHearts();
     }
   };
@@ -93,30 +96,29 @@ export const LessonPlayer: React.FC<LessonPlayerProps> = ({
     );
   }
 
-  if (step === "sequence_complete") {
+  if (step === "completing") {
+    return <LessonLoading />;
+  }
+
+  if (step === "completed") {
     return (
-      <div className="max-w-md mx-auto py-12 px-4 text-center">
-        <Card className="p-8 space-y-6 bg-[#182830] border-2 border-[#58cc02] shadow-2xl">
-          <div className="w-20 h-20 rounded-full bg-[#58cc02]/20 border-2 border-[#58cc02] text-[#58cc02] flex items-center justify-center text-4xl mx-auto">
-            🎉
-          </div>
-          <div>
-            <h2 className="text-2xl font-black text-white">Sequence Completed!</h2>
-            <p className="text-xs text-gray-400 mt-2">
-              You reviewed all {totalExercises} exercises in this session.
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            size="lg"
-            className="w-full"
-            onClick={() => {
-              window.location.href = "/learn";
-            }}
-          >
-            RETURN TO PATH →
-          </Button>
-        </Card>
+      <LessonComplete
+        result={completionResult}
+        onContinue={() => {
+          window.location.href = "/learn";
+        }}
+      />
+    );
+  }
+
+  if (step === "error") {
+    return (
+      <div className="max-w-md mx-auto py-12 px-4 space-y-4">
+        <ErrorState
+          title="Couldn't complete the lesson."
+          message={sessionError || "Failed to communicate with backend."}
+          onRetry={completeSession}
+        />
       </div>
     );
   }
