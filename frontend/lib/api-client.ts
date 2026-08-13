@@ -1,6 +1,6 @@
 /**
- * Centralized API Client for backend communication.
- * Uses NEXT_PUBLIC_API_URL environment configuration.
+ * Centralized API Client & Error Abstraction
+ * Handles HTTP requests, base URL resolution, JSON parsing, and unified error handling.
  */
 
 const API_BASE_URL =
@@ -16,25 +16,34 @@ const getRootServerUrl = (): string => {
   }
 };
 
-export interface ApiResponse<T> {
-  data?: T;
-  error?: string;
+export class ApiError extends Error {
   status: number;
+  code: string;
+  details?: any;
+
+  constructor(status: number, code: string, message: string, details?: any) {
+    super(message);
+    self.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
 }
 
 export async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
-): Promise<ApiResponse<T>> {
+): Promise<T> {
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const defaultHeaders: HeadersInit = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
   try {
-    const url = endpoint.startsWith("http")
-      ? endpoint
-      : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
-
-    const defaultHeaders: HeadersInit = {
-      "Content-Type": "application/json",
-    };
-
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -44,23 +53,34 @@ export async function fetchApi<T>(
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return {
-        status: response.status,
-        error: errorData?.error?.message || `HTTP Error ${response.status}`,
-      };
+      let code = "UNKNOWN_ERROR";
+      let message = `Request failed with status ${response.status}`;
+      let details = null;
+
+      try {
+        const errorData = await response.json();
+        if (errorData?.error) {
+          code = errorData.error.code || code;
+          message = errorData.error.message || message;
+          details = errorData.error.details || null;
+        }
+      } catch {
+        // Fallback for non-JSON error bodies
+      }
+
+      throw new ApiError(response.status, code, message, details);
     }
 
-    const data = await response.json();
-    return {
-      status: response.status,
-      data,
-    };
-  } catch (err) {
-    return {
-      status: 500,
-      error: err instanceof Error ? err.message : "Network error",
-    };
+    return await response.json();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      500,
+      "NETWORK_ERROR",
+      error instanceof Error ? error.message : "Network error / Backend unreachable"
+    );
   }
 }
 
@@ -76,7 +96,29 @@ export async function checkBackendHealth(): Promise<{
       return { online: data?.status === "ok", statusText: data?.status || "ok" };
     }
     return { online: false, statusText: `HTTP ${response.status}` };
-  } catch (err) {
+  } catch {
     return { online: false, statusText: "Offline / Disconnected" };
   }
 }
+
+export const apiClient = {
+  get: <T>(endpoint: string, options?: RequestInit) =>
+    fetchApi<T>(endpoint, { method: "GET", ...options }),
+
+  post: <T>(endpoint: string, body?: any, options?: RequestInit) =>
+    fetchApi<T>(endpoint, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    }),
+
+  put: <T>(endpoint: string, body?: any, options?: RequestInit) =>
+    fetchApi<T>(endpoint, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    }),
+
+  delete: <T>(endpoint: string, options?: RequestInit) =>
+    fetchApi<T>(endpoint, { method: "DELETE", ...options }),
+};
