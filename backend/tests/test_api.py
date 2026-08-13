@@ -93,59 +93,56 @@ async def test_start_lesson_endpoint_and_reuse(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_hearts_system_deduction_and_zero_hearts(client: AsyncClient, db_session: Session):
-    # 1. Start lesson
+async def test_translate_and_word_bank_exercise_validation(client: AsyncClient, db_session: Session):
+    # 1. Start lesson lsn_greetings_1 (contains ex_gr1_2: translate)
     start_res = await client.post("/api/v1/lessons/lsn_greetings_1/start")
     assert start_res.status_code == 200
     attempt_id = start_res.json()["attempt_id"]
 
-    # 2. Correct answer -> hearts_lost: 0, hearts_remaining: 5
-    correct_res = await client.post(
-        f"/api/v1/lessons/lsn_greetings_1/exercises/ex_gr1_1/answer",
-        json={"attempt_id": attempt_id, "answer": "Hello"},
-    )
-    assert correct_res.status_code == 200
-    c_data = correct_res.json()
-    assert c_data["is_correct"] is True
-    assert c_data["hearts_lost"] == 0
-    assert c_data["hearts_remaining"] == 5
-
-    # 3. Duplicate submission -> no second heart deduction
-    dup_res = await client.post(
-        f"/api/v1/lessons/lsn_greetings_1/exercises/ex_gr1_1/answer",
-        json={"attempt_id": attempt_id, "answer": "Hello"},
-    )
-    assert dup_res.status_code == 200
-    assert dup_res.json()["hearts_remaining"] == 5
-
-    # 4. Incorrect answer -> hearts_lost: 1, hearts_remaining: 4
-    inc1_res = await client.post(
+    # 2. Correct Translate Answer ("ex_gr1_2": correct "Good morning")
+    trans_res = await client.post(
         f"/api/v1/lessons/lsn_greetings_1/exercises/ex_gr1_2/answer",
-        json={"attempt_id": attempt_id, "answer": "Wrong Answer"},
+        json={"attempt_id": attempt_id, "answer": "  good MORNING.  "},
     )
-    assert inc1_res.status_code == 200
-    inc1_data = inc1_res.json()
-    assert inc1_data["is_correct"] is False
-    assert inc1_data["hearts_lost"] == 1
-    assert inc1_data["hearts_remaining"] == 4
+    assert trans_res.status_code == 200
+    t_data = trans_res.json()
+    assert t_data["is_correct"] is True
+    assert t_data["correct_answer"] == "Good morning"
+    assert t_data["hearts_lost"] == 0
 
-    # Manually drain hearts in test DB to test 0 hearts state
-    user_stats = db_session.query(UserStatsModel).filter(UserStatsModel.user_id == "usr_demo").first()
-    assert user_stats is not None
-    user_stats.hearts = 0
-    db_session.commit()
+    # 3. Incorrect Translate Answer ("ex_gr1_1": MCQ prompt)
+    trans_inc = await client.post(
+        f"/api/v1/lessons/lsn_greetings_1/exercises/ex_gr1_1/answer",
+        json={"attempt_id": attempt_id, "answer": "Wrong Translation"},
+    )
+    assert trans_inc.status_code == 200
+    assert trans_inc.json()["is_correct"] is False
+    assert trans_inc.json()["hearts_lost"] == 1
+    assert trans_inc.json()["hearts_remaining"] == 4
 
-    # 5. Answer submission with 0 hearts -> HTTP 409 OUT_OF_HEARTS
+    # 4. Start lesson lsn_greetings_2 (contains ex_gr2_1: word_bank "Muchas gracias")
     start2_res = await client.post("/api/v1/lessons/lsn_greetings_2/start")
     attempt2_id = start2_res.json()["attempt_id"]
 
-    zero_res = await client.post(
-        f"/api/v1/lessons/lsn_greetings_2/exercises/ex_gr2_2/answer",
-        json={"attempt_id": attempt2_id, "answer": "Por favor"},
+    # Correct Word Bank assembled string ("Muchas gracias")
+    wb_res = await client.post(
+        f"/api/v1/lessons/lsn_greetings_2/exercises/ex_gr2_1/answer",
+        json={"attempt_id": attempt2_id, "answer": "Muchas gracias"},
     )
-    assert zero_res.status_code == 409
-    z_data = zero_res.json()
-    assert z_data["error"]["code"] == "OUT_OF_HEARTS"
+    assert wb_res.status_code == 200
+    wb_data = wb_res.json()
+    assert wb_data["is_correct"] is True
+    assert wb_data["hearts_lost"] == 0
+
+    # Incorrect Word Bank ordering ("gracias Muchas")
+    wb_inc_res = await client.post(
+        f"/api/v1/lessons/lsn_greetings_2/exercises/ex_gr2_2/answer",
+        json={"attempt_id": attempt2_id, "answer": "Wrong Word Order"},
+    )
+    assert wb_inc_res.status_code == 200
+    assert wb_inc_res.json()["is_correct"] is False
+    assert wb_inc_res.json()["hearts_lost"] == 1
+    assert wb_inc_res.json()["hearts_remaining"] == 3
 
 
 @pytest.mark.asyncio

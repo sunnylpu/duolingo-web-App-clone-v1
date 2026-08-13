@@ -55,9 +55,26 @@ export const ExerciseRenderer: React.FC<ExerciseRendererProps> = ({
         />
       );
     case "translate":
-      return <TranslateExercise exercise={exercise} />;
+      return (
+        <TranslateExercise
+          exercise={exercise}
+          selectedAnswer={selectedAnswer}
+          onSelectAnswer={onSelectAnswer}
+          onSubmit={onSubmit}
+          disabled={disabled}
+          feedbackStatus={feedbackStatus}
+        />
+      );
     case "word_bank":
-      return <WordBankExercise exercise={exercise} />;
+      return (
+        <WordBankExercise
+          exercise={exercise}
+          selectedAnswer={selectedAnswer}
+          onSelectAnswer={onSelectAnswer}
+          disabled={disabled}
+          feedbackStatus={feedbackStatus}
+        />
+      );
     case "match_pairs":
       return <MatchPairsExercise exercise={exercise} />;
     case "fill_blank":

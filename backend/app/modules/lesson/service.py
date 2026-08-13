@@ -24,6 +24,9 @@ class LessonService:
         if not answer:
             return ""
         cleaned = answer.strip().lower()
+        # Remove trailing punctuation like '.', '!', '?', ','
+        cleaned = re.sub(r"[.!?,\s]+$", "", cleaned)
+        cleaned = re.sub(r"^[.!?,\s]+", "", cleaned)
         cleaned = re.sub(r"\s+", " ", cleaned)
         return cleaned
 
@@ -117,7 +120,7 @@ class LessonService:
                 exercise_id=exercise_id,
                 is_correct=existing_ex_attempt.is_correct,
                 correct_answer=exercise.correct_answer,
-                hearts_lost=0,  # Duplicate submission does not deduct a second heart
+                hearts_lost=0,
                 hearts_remaining=hearts_rem,
                 attempt_completed=False,
             )
@@ -127,10 +130,17 @@ class LessonService:
         if current_hearts <= 0:
             raise ConflictError("You have no hearts remaining.", code="OUT_OF_HEARTS")
 
-        # 8. Answer normalization & comparison
+        # 8. Answer normalization & comparison (with accepted_answers support)
         norm_submission = self.normalize_answer(user_answer, exercise.type)
         norm_correct = self.normalize_answer(exercise.correct_answer, exercise.type)
-        is_correct = norm_submission == norm_correct
+
+        accepted_list = []
+        if exercise.data and isinstance(exercise.data, dict):
+            raw_accepted = exercise.data.get("accepted_answers", [])
+            if isinstance(raw_accepted, list):
+                accepted_list = [self.normalize_answer(ans, exercise.type) for ans in raw_accepted]
+
+        is_correct = (norm_submission == norm_correct) or (norm_submission in accepted_list)
 
         # 9. Transactional persistence & heart deduction
         try:
