@@ -1,145 +1,108 @@
-# Duolingo Clone - Full-Stack Scalable Platform (Phase 01)
+# Duolingo Clone — Production-Ready Full-Stack Platform (v1.0.0-rc1)
 
-A production-oriented Duolingo-style language-learning platform built as a scalable **Modular Monolith** with Next.js App Router, FastAPI, SQLAlchemy, and Docker infrastructure.
+A production-engineered Duolingo-style language-learning web application built as a scalable **Modular Monolith** with Next.js 14 App Router, FastAPI, SQLAlchemy 2.0, Prometheus metrics, structured audit logging, and production security hardening.
 
 ---
 
-## Technical Stack
+## 🚀 Key Platform Features
+
+- **Multi-Course Curriculum Engine**:
+  - 🇬🇧 **English Flagship**: 8 Units, 32 Skills, 96 Lessons, 576 Exercises
+  - 🇪🇸 **Spanish Expanded**: 5 Units, 20 Skills, 60 Lessons, 360 Exercises
+  - 🇫🇷 **French Secondary**: 3 Units, 12 Skills, 36 Lessons, 216 Exercises
+  - **Total Scale**: 16 Units, 64 Skills, 192 Lessons, **1,152 Exercises**
+- **Lesson Engine & Interactive Exercise Types**:
+  - 6 exercise mechanics: Multiple Choice, Word Order, Fill in the Blank, Listening, Speaking, and Matching Pairs.
+  - Adaptive difficulty, lazy heart regeneration, practice recovery mode, and Smart Review queue.
+- **Gamification & Engagement Layer**:
+  - XP rewards, daily streaks, quest missions, weekly challenge, leaderboard rankings, and 29 achievements.
+- **Social Learning Platform**:
+  - User follow/following network, public profile views, and activity event feed.
+- **Content Discovery & Navigation**:
+  - Full-text content search, Vocabulary Explorer by course, and multi-course switcher.
+- **Production Observability & Telemetry**:
+  - `X-Request-ID` request correlation & process timing middleware.
+  - Prometheus-compatible metrics endpoint (`GET /metrics`).
+  - Transactional operational audit trail (`AuditEventModel`).
+  - Liveness & Readiness health probes (`GET /health/live`, `GET /health/ready`).
+  - Real-time Operations Dashboard (`/ops` & `/admin`).
+- **Production Security & Hardening**:
+  - Sliding-window rate-limiting abstraction (`RateLimiter`).
+  - Environment-driven CORS policies and strict HTTP security headers (`nosniff`, `DENY`, `strict-origin-when-cross-origin`).
+  - Enforced SQLite Foreign Keys (`PRAGMA foreign_keys = ON`).
+
+---
+
+## 🛠️ Technology Stack
 
 ### Frontend
 - **Framework**: Next.js 14+ (App Router)
 - **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **API Client**: Centralized Fetch client using `NEXT_PUBLIC_API_URL`
+- **Styling**: Vanilla CSS / Tailwind CSS design system
+- **API Client**: Centralized Fetch client with request correlation
 
 ### Backend
 - **Framework**: FastAPI
 - **Server**: Uvicorn
 - **ORM**: SQLAlchemy 2.0
-- **Settings**: Pydantic Settings
 - **Validation**: Pydantic V2
-- **Database**: SQLite (Development foundation, PostgreSQL-ready)
-- **Testing**: Pytest & HTTPX
-
-### Infrastructure & Deployment
-- **Containerization**: Docker & Docker Compose
-- **Orchestration Preparedness**: Kubernetes (`k8s/`)
-- **CI/CD Preparedness**: Jenkins (`jenkins/`)
+- **Database**: SQLite (Development foundation, PostgreSQL migration ready)
+- **Testing**: Pytest & Async Client (117 integration & security tests)
 
 ---
 
-## Repository Structure
-
-```
-duolingo-clone/
-├── frontend/             # Next.js App Router UI
-│   ├── app/              # Routes, layout, pages
-│   ├── components/       # Reusable UI components
-│   ├── features/         # Feature-specific modules
-│   ├── hooks/            # Custom React hooks
-│   ├── lib/              # Utilities & API client
-│   ├── services/         # Service layer helpers
-│   ├── types/            # TypeScript type definitions
-│   └── public/           # Static assets
-├── backend/              # FastAPI Modular Monolith
-│   ├── app/
-│   │   ├── main.py       # Application entry point
-│   │   ├── config.py     # Pydantic Settings configuration
-│   │   ├── shared/       # Shared infra (database, errors, logging, security)
-│   │   └── modules/      # Domain modules (user, course, lesson, progress, gamification, leaderboard)
-│   ├── seed/             # Database seed routines
-│   ├── tests/            # Suite of Pytest integration tests
-│   ├── requirements.txt  # Python dependencies
-│   ├── pytest.ini        # Pytest configuration
-│   └── Dockerfile        # Container image specification
-├── docker/               # Container tooling & configs
-├── k8s/                  # Kubernetes manifest templates
-├── jenkins/              # Jenkinsfile pipeline template
-├── docs/                 # Architecture, API & Database documentation
-├── docker-compose.yml    # Full-stack orchestration
-└── README.md             # Project documentation
-```
-
----
-
-## Local Setup & Quickstart
-
-### Prerequisites
-- Node.js 18+ & npm
-- Python 3.11+
-- Docker & Docker Compose (Optional for containerized run)
+## 💻 Local Setup & Execution
 
 ### 1. Backend Setup
 
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Start FastAPI dev server
+# Start FastAPI production/dev server
 uvicorn app.main:app --reload --port 8000
 ```
 
-- API Base URL: `http://localhost:8000`
-- Health Endpoint: `http://localhost:8000/health`
-- Interactive API Docs (Swagger): `http://localhost:8000/docs`
+- API Docs (Swagger): `http://localhost:8000/docs`
+- Health Probe: `http://localhost:8000/health/live`
+- Readiness Probe: `http://localhost:8000/health/ready`
+- Metrics: `http://localhost:8000/metrics`
 
 ### 2. Frontend Setup
 
 ```bash
-# Navigate to frontend directory
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start Next.js dev server
 npm run dev
 ```
 
-- Web App URL: `http://localhost:3000`
+- Web Application: `http://localhost:3000`
+- Ops Dashboard: `http://localhost:3000/ops`
 
 ---
 
-## Testing
+## 🧪 Verification & Release Check
 
-Run the Pytest suite for the backend:
+Run the canonical automated release verification script:
 
 ```bash
-cd backend
-python3 -m pytest -v
+./scripts/release-check.sh
 ```
+
+This validates:
+1. All 117 Pytest backend unit, integration, and security tests pass.
+2. Deterministic curriculum seed verification passes (`python3 -m seed.verify`).
+3. Next.js production build succeeds (`npm run build`).
 
 ---
 
-## Docker Compose Quickstart
+## 📚 System Documentation
 
-Run both frontend and backend in isolated Docker containers:
-
-```bash
-docker-compose up --build
-```
-
-- Frontend: `http://localhost:3000`
-- Backend Health: `http://localhost:8000/health`
-
----
-
-## Environment Variables
-
-### Backend (`backend/.env.example`)
-- `APP_NAME`: Name of the FastAPI application.
-- `APP_ENV`: Deployment environment (`development`, `production`, `test`).
-- `DEBUG`: Boolean flag for debug mode.
-- `DATABASE_URL`: Database connection string (`sqlite:///./data/duolingo.db`).
-- `CORS_ORIGINS`: Allowed origins for CORS (comma-separated).
-- `API_PREFIX`: Global API version prefix (`/api/v1`).
-
-### Frontend (`frontend/.env.example`)
-- `NEXT_PUBLIC_API_URL`: Backend API base URL (`http://localhost:8000/api/v1`).
+- [docs/architecture.md](docs/architecture.md): System architecture & curriculum telemetry snapshot.
+- [docs/domain-ownership.md](docs/domain-ownership.md): Domain ownership & event topology.
+- [docs/api-inventory.md](docs/api-inventory.md): Complete API endpoint inventory.
+- [docs/security.md](docs/security.md): Production security architecture & threat matrix.
+- [docs/security-checklist.md](docs/security-checklist.md): Operational security verification checklist.
+- [docs/deployment-architecture.md](docs/deployment-architecture.md): Docker, Jenkins CI/CD, Kubernetes & AWS deployment pipeline.
