@@ -8,6 +8,7 @@ import { UserStats } from "@/types";
 import { OutOfHeartsModal } from "@/features/gamification/components/OutOfHeartsModal";
 import { CourseSwitcher } from "@/features/course";
 import { SearchBar } from "@/features/search";
+import { NotificationBell } from "@/features/notifications";
 
 export const Header: React.FC = () => {
   const pathname = usePathname();
@@ -80,8 +81,10 @@ export const Header: React.FC = () => {
             })}
           </nav>
 
-          {/* User Stats Bar (Global Stats) */}
+          {/* Notification Bell & User Stats Bar */}
           <div className="flex items-center gap-2 text-xs font-black select-none shrink-0">
+            <NotificationBell />
+
             {stats ? (
               <>
                 {/* Streak */}

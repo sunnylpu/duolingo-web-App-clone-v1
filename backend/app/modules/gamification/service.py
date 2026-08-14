@@ -316,6 +316,18 @@ class GamificationService:
         newly_earned_models = self.achievement_engine.evaluate_user_achievements(
             user_id=user_id, course_id=course_id
         )
+        if newly_earned_models:
+            from app.modules.notifications.service import NotificationService
+            notif_svc = NotificationService(self.db)
+            for ach in newly_earned_models:
+                notif_svc.create_notification(
+                    user_id=user_id,
+                    notif_type="ACHIEVEMENT_UNLOCKED",
+                    title=f"🏆 Achievement Unlocked: {ach.name}!",
+                    message=ach.description,
+                    metadata={"achievement_id": ach.id, "xp": ach.xp_reward},
+                )
+
         if commit:
             self.db.commit()
         else:

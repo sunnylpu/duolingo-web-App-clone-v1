@@ -13,6 +13,7 @@ from app.modules.social.router import router as social_router
 from app.modules.search.router import router as search_router
 from app.modules.vocabulary.router import router as vocabulary_router
 from app.modules.quests.router import router as quest_router
+from app.modules.notifications.router import router as notifications_router
 
 api_v1_router = APIRouter()
 
@@ -30,3 +31,4 @@ api_v1_router.include_router(social_router)
 api_v1_router.include_router(search_router)
 api_v1_router.include_router(vocabulary_router)
 api_v1_router.include_router(quest_router)
+api_v1_router.include_router(notifications_router)
