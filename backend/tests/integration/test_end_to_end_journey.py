@@ -39,11 +39,11 @@ async def test_full_end_to_end_learner_journey(client: AsyncClient):
 
     # 5. Answer remaining exercises correctly
     answers = [
-        ("ex_gr1_2", "Good morning"),
-        ("ex_gr1_3", {"pairs": [["Hola", "Hello"], ["Gracias", "Thank you"], ["Adiós", "Goodbye"]]}),
-        ("ex_gr1_4", "Buenas noches"),
-        ("ex_gr1_5", "Hasta luego"),
-        ("ex_gr1_6", "como"),
+        ("ex_gr1_2", "Buenos días, ¿cómo estás?"),
+        ("ex_gr1_3", "Buenos días, ¿cómo estás?"),
+        ("ex_gr1_4", "días"),
+        ("ex_gr1_5", "Adiós"),
+        ("ex_gr1_6", "Good morning"),
     ]
 
     for ex_id, ans in answers:

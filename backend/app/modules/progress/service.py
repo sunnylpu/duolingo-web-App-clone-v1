@@ -207,7 +207,9 @@ class ProgressService:
         if course_id:
             course = course_query.filter(CourseModel.id == course_id).first()
         else:
-            course = course_query.filter(CourseModel.is_active == True).first()
+            course = course_query.filter(CourseModel.id == "crs_english", CourseModel.is_active == True).first()
+            if not course:
+                course = course_query.filter(CourseModel.is_active == True).first()
 
         if not course:
             raise NotFoundError("No active courses found for learning path.")

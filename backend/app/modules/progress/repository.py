@@ -81,8 +81,11 @@ class ProgressRepository:
         act = (
             self.db.query(DailyActivityModel)
             .filter(
-                DailyActivityModel.user_id == user_id,
-                DailyActivityModel.activity_date == activity_date,
+                (DailyActivityModel.id == activity_id)
+                | (
+                    (DailyActivityModel.user_id == user_id)
+                    & (DailyActivityModel.activity_date == activity_date)
+                )
             )
             .first()
         )

@@ -18,7 +18,7 @@ async def test_duplicate_answer_submission_retry_idempotency(client: AsyncClient
     # Initial submission
     ans1 = await client.post(
         "/api/v1/lessons/lsn_greetings_1/exercises/ex_gr1_1/answer",
-        json={"attempt_id": attempt_id, "answer": "Hello"},
+        json={"attempt_id": attempt_id, "answer": "Hola"},
     )
     assert ans1.status_code == 200
     assert ans1.json()["is_correct"] is True
@@ -26,7 +26,7 @@ async def test_duplicate_answer_submission_retry_idempotency(client: AsyncClient
     # Duplicate retry submission -> should return cached result without error or side-effects
     ans2 = await client.post(
         "/api/v1/lessons/lsn_greetings_1/exercises/ex_gr1_1/answer",
-        json={"attempt_id": attempt_id, "answer": "Hello"},
+        json={"attempt_id": attempt_id, "answer": "Hola"},
     )
     assert ans2.status_code == 200
     assert ans2.json()["is_correct"] is True
@@ -40,12 +40,12 @@ async def test_duplicate_lesson_completion_idempotency(client: AsyncClient):
 
     # Answer all exercises
     answers = [
-        ("ex_gr1_1", "Hello"),
-        ("ex_gr1_2", "Good morning"),
-        ("ex_gr1_3", {"pairs": [["Hola", "Hello"], ["Gracias", "Thank you"], ["Adiós", "Goodbye"]]}),
-        ("ex_gr1_4", "Buenas noches"),
-        ("ex_gr1_5", "Hasta luego"),
-        ("ex_gr1_6", "como"),
+        ("ex_gr1_1", "Hola"),
+        ("ex_gr1_2", "Buenos días, ¿cómo estás?"),
+        ("ex_gr1_3", "Buenos días, ¿cómo estás?"),
+        ("ex_gr1_4", "días"),
+        ("ex_gr1_5", "Adiós"),
+        ("ex_gr1_6", "Good morning"),
     ]
 
     for ex_id, ans in answers:

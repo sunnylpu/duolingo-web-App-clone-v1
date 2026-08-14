@@ -13,9 +13,8 @@ from app.modules.progress.repository import ProgressRepository
 from app.modules.gamification.repository import GamificationRepository
 from app.modules.leaderboard.repository import LeaderboardRepository
 
-from seed.course_data import COURSE_DATA
 from seed.generators.course_generator import generate_course
-from seed.catalogs.english import ENGLISH_COURSE_SPEC
+from seed.catalogs import ALL_COURSE_SPECS
 from seed.achievement_data import ACHIEVEMENTS
 from seed.user_data import (
     DEMO_USER,
@@ -67,11 +66,8 @@ def seed_database(db: Session) -> dict:
         )
         counts["achievements"] += 1
 
-    # 2. Seed Courses (Spanish legacy + English flagship)
-    courses_to_seed = [
-        generate_course(ENGLISH_COURSE_SPEC),  # Flagship English course (8 units, 32 skills, 96 lessons, ~576 exercises)
-        COURSE_DATA,                            # Existing Spanish course
-    ]
+    # 2. Seed Courses (English flagship + Spanish expanded + French secondary)
+    courses_to_seed = [generate_course(spec) for spec in ALL_COURSE_SPECS]
 
     for c_data in courses_to_seed:
         course_repo.create_or_update_course(
