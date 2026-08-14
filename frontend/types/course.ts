@@ -14,10 +14,13 @@ export interface CourseSummary {
   target_language: string;
   description: string | null;
   is_active: boolean;
+  status?: string;
   total_units?: number;
   completed_units?: number;
   total_skills?: number;
   completed_skills?: number;
+  total_lessons?: number;
+  completed_lessons?: number;
   progress_percent?: number;
 }
 

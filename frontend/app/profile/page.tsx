@@ -8,19 +8,10 @@ import { UserProfile, UserAchievement, CourseSummary } from "@/types";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card } from "@/components/ui/Card";
-import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StreakDisplay } from "@/components/gamification/StreakDisplay";
 import { DailyActivitySummary } from "@/components/gamification/DailyActivitySummary";
 import { AchievementCard } from "@/features/achievements/components/AchievementCard";
-
-const COURSE_FLAGS: Record<string, string> = {
-  crs_english: "🇬🇧",
-  crs_spanish: "🇪🇸",
-  crs_french: "🇫🇷",
-  en: "🇬🇧",
-  es: "🇪🇸",
-  fr: "🇫🇷",
-};
+import { CourseProgressCard } from "@/features/course";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -66,7 +57,7 @@ export default function ProfilePage() {
     );
   }
 
-  const { user, stats, learning } = profile;
+  const { user, stats } = profile;
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto py-2">
@@ -112,35 +103,13 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Multi-Course Progress Breakdown */}
+      {/* Cross-Course Learning Dashboard */}
       <div>
-        <h2 className="text-lg font-bold text-gray-200 mb-3">Course Unit Progression</h2>
+        <h2 className="text-lg font-bold text-gray-200 mb-3">Learning Progress Dashboard</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {courses.map((c) => {
-            const flag = COURSE_FLAGS[c.id] || COURSE_FLAGS[c.code] || "🌐";
-            const totalUnits = c.total_units || (c.code === "en" ? 8 : c.code === "es" ? 5 : 3);
-            const completedUnits = c.completed_units || 0;
-            const totalSkills = c.total_skills || (c.code === "en" ? 32 : c.code === "es" ? 20 : 14);
-            const completedSkills = c.completed_skills || 0;
-            const pct = c.progress_percent || 0;
-
-            return (
-              <Card key={c.id} className="p-5 bg-[#182830] border-2 border-[#37464f] space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-black text-white flex items-center gap-2">
-                    <span className="text-2xl">{flag}</span>
-                    <span>{c.name}</span>
-                  </span>
-                  <span className="text-xs font-extrabold text-[#58cc02]">{pct}%</span>
-                </div>
-                <div className="text-xs text-gray-400 font-bold space-y-1">
-                  <div>{completedUnits} / {totalUnits} units completed</div>
-                  <div>{completedSkills} / {totalSkills} skills mastered</div>
-                </div>
-                <ProgressBar value={pct} height="h-2.5" />
-              </Card>
-            );
-          })}
+          {courses.map((c) => (
+            <CourseProgressCard key={c.id} course={c} />
+          ))}
         </div>
       </div>
 

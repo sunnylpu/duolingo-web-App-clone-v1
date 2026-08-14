@@ -20,10 +20,13 @@ class CourseSummaryResponse(BaseModel):
     target_language: str
     description: Optional[str] = None
     is_active: bool
+    status: str = "available"
     total_units: int = 0
     completed_units: int = 0
     total_skills: int = 0
     completed_skills: int = 0
+    total_lessons: int = 0
+    completed_lessons: int = 0
     progress_percent: float = 0.0
 
     model_config = ConfigDict(from_attributes=True)
@@ -71,6 +74,21 @@ class UnitProgressSummaryResponse(BaseModel):
     completion_percent: float
     completed_skills: int
     total_skills: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CourseProgressSummaryResponse(BaseModel):
+    course_id: str
+    course_name: str
+    status: str
+    completion_percent: float
+    completed_units: int
+    total_units: int
+    completed_skills: int
+    total_skills: int
+    completed_lessons: int
+    total_lessons: int
 
     model_config = ConfigDict(from_attributes=True)
 

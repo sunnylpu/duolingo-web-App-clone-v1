@@ -28,10 +28,18 @@ export interface LessonCompleteResult {
   status: string;
   xp_earned: number;
   unit_bonus_xp?: number;
+  course_bonus_xp?: number;
   unit_completed?: boolean;
+  course_completed?: boolean;
   unit?: {
     id: string;
     title: string;
+    status: string;
+    completion_percent: number;
+  } | null;
+  course?: {
+    id: string;
+    name: string;
     status: string;
     completion_percent: number;
   } | null;

@@ -9,7 +9,7 @@ from app.modules.gamification.service import GamificationService
 from app.modules.progress.repository import ProgressRepository
 from app.modules.lesson.validators import validator_registry
 from app.modules.lesson.models import LessonModel, SkillModel
-from app.modules.course.models import UnitModel
+from app.modules.course.models import UnitModel, CourseModel
 from app.modules.progress.models import LessonAttemptModel
 from app.modules.lesson.schemas import (
     LessonDetailResponse,
@@ -44,7 +44,6 @@ class LessonService:
         if not lesson:
             raise NotFoundError(f"Lesson with ID '{lesson_id}' was not found.")
 
-        # Business Access Control: Validate progression status for skill
         from app.modules.progress.service import ProgressService
         progress_service = ProgressService(self.db)
         skill_state = progress_service.get_skill_status(current_user.id, lesson.skill_id)
@@ -208,7 +207,7 @@ class LessonService:
                 "lessons_completed": 1,
             }
 
-        # Idempotency check for repeated requests
+        # Idempotency check for repeat completion requests
         if attempt.status == "completed":
             sp_data = get_skill_progress_data(lesson.skill_id)
             return LessonCompleteResponse(
@@ -217,8 +216,11 @@ class LessonService:
                 status="completed",
                 xp_earned=0,
                 unit_bonus_xp=0,
+                course_bonus_xp=0,
                 unit_completed=False,
+                course_completed=False,
                 unit=None,
+                course=None,
                 score=attempt.score,
                 skill_progress=sp_data,
                 already_completed=True,
@@ -302,19 +304,23 @@ class LessonService:
                 commit=False,
             )
 
-            # ── Unit completion evaluation & milestone check ─────────────
+            # ── Unit & Course completion evaluation ───────────────────────
             unit_bonus_xp = 0
+            course_bonus_xp = 0
             unit_completed = False
+            course_completed = False
             unit_data = None
+            course_data = None
 
             target_skill = (
                 self.db.query(SkillModel)
-                .options(joinedload(SkillModel.unit))
+                .options(joinedload(SkillModel.unit).joinedload(UnitModel.course))
                 .filter(SkillModel.id == skill_id)
                 .first()
             )
             if target_skill and target_skill.unit:
                 unit = target_skill.unit
+                course = unit.course
                 unit_skills = (
                     self.db.query(SkillModel)
                     .filter(SkillModel.unit_id == unit.id)
@@ -351,6 +357,22 @@ class LessonService:
                         "completion_percent": 100.0,
                     }
 
+                    # Check overall course completion
+                    if course:
+                        path_eval = progress_service.get_learning_path(current_user, course_id=course.id)
+                        if path_eval.course.completed_units == path_eval.course.total_units and path_eval.course.total_units > 0:
+                            c_milestone_info = progress_service.check_and_grant_course_milestone(
+                                user_id=current_user.id, course_id=course.id
+                            )
+                            course_bonus_xp = c_milestone_info["course_bonus_xp"]
+                            course_completed = c_milestone_info["course_completed"]
+                            course_data = {
+                                "id": course.id,
+                                "name": course.name,
+                                "status": "completed",
+                                "completion_percent": 100.0,
+                            }
+
             # Evaluate achievements
             newly_earned_achs = self.gamification_service.evaluate_achievements(
                 user_id=current_user.id, commit=False
@@ -380,8 +402,11 @@ class LessonService:
                 status="completed",
                 xp_earned=lesson.xp_reward,
                 unit_bonus_xp=unit_bonus_xp,
+                course_bonus_xp=course_bonus_xp,
                 unit_completed=unit_completed,
+                course_completed=course_completed,
                 unit=unit_data,
+                course=course_data,
                 score=score,
                 skill_progress=sp_data,
                 streak=streak_daily_info.get("streak"),

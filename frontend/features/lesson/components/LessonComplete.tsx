@@ -14,7 +14,8 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
 }) => {
   const xpEarned = result?.xp_earned ?? 10;
   const unitBonusXp = result?.unit_bonus_xp ?? 0;
-  const totalXpAwarded = xpEarned + unitBonusXp;
+  const courseBonusXp = result?.course_bonus_xp ?? 0;
+  const totalXpAwarded = xpEarned + unitBonusXp + courseBonusXp;
   const score = result?.score ?? 100;
   const progressPercent = Math.round(result?.skill_progress?.completion_percent ?? 100);
   const crownLevel = result?.skill_progress?.crown_level ?? 1;
@@ -26,7 +27,9 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
   const goalJustCompleted = result?.daily_progress?.goal_just_completed ?? false;
 
   const unitCompleted = result?.unit_completed ?? false;
+  const courseCompleted = result?.course_completed ?? false;
   const unitTitle = result?.unit?.title || "Unit Milestone";
+  const courseName = result?.course?.name || "Course";
 
   const newlyEarnedAchievements: any[] = result?.achievements?.newly_earned ?? [];
 
@@ -35,15 +38,32 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
       <Card className="p-8 space-y-6 bg-[#182830] border-2 border-[#58cc02] shadow-2xl">
         {/* Celebration Header */}
         <div className="w-24 h-24 rounded-full bg-[#58cc02]/20 border-4 border-[#58cc02] text-[#58cc02] flex items-center justify-center text-5xl mx-auto motion-safe:animate-bounce">
-          🎉
+          {courseCompleted ? "🎓" : "🎉"}
         </div>
 
         <div>
-          <h2 className="text-3xl font-black text-white tracking-wide">WELL DONE!</h2>
-          <p className="text-xs text-gray-400 font-bold mt-1">Lesson completed successfully</p>
+          <h2 className="text-3xl font-black text-white tracking-wide">
+            {courseCompleted ? "COURSE MASTERED!" : "WELL DONE!"}
+          </h2>
+          <p className="text-xs text-gray-400 font-bold mt-1">
+            {courseCompleted ? `You completed the entire ${courseName} course!` : "Lesson completed successfully"}
+          </p>
         </div>
 
-        {/* Milestone Toasts & Unit Celebration */}
+        {/* Top-Level Course Mastery Milestone Card */}
+        {courseCompleted && (
+          <div className="p-5 bg-[#ffc800]/20 border-4 border-[#ffc800] rounded-2xl space-y-1 text-center animate-pulse shadow-xl shadow-[#ffc800]/20">
+            <div className="text-4xl">🎓</div>
+            <div className="text-xs font-black uppercase text-[#ffc800] tracking-wider">
+              TOP-LEVEL COURSE MASTERY BONUS (+{courseBonusXp || 500} XP)
+            </div>
+            <div className="text-lg font-extrabold text-white">
+              {courseName} Master Badge Unlocked
+            </div>
+          </div>
+        )}
+
+        {/* Unit Completion Celebration Badge */}
         {unitCompleted && (
           <div className="p-4 bg-emerald-500/20 border-2 border-emerald-500 rounded-2xl space-y-1 text-center animate-bounce shadow-lg shadow-emerald-500/20">
             <div className="text-3xl">🏆</div>
@@ -93,9 +113,9 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
               <span>⭐</span>
               <span>+{totalXpAwarded}</span>
             </div>
-            {unitBonusXp > 0 && (
+            {(unitBonusXp > 0 || courseBonusXp > 0) && (
               <div className="text-[10px] text-emerald-400 font-bold mt-0.5">
-                (Lesson +{xpEarned}, Unit +{unitBonusXp})
+                (Lesson +{xpEarned}{unitBonusXp > 0 ? `, Unit +${unitBonusXp}` : ""}{courseBonusXp > 0 ? `, Course +${courseBonusXp}` : ""})
               </div>
             )}
           </div>

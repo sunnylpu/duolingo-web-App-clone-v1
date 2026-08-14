@@ -7,7 +7,7 @@ from app.modules.user.models import UserModel
 from app.modules.progress.repository import ProgressRepository
 from app.modules.progress.service import ProgressService
 from app.modules.progress.schemas import ProgressResponse
-from app.modules.course.schemas import UnitProgressSummaryResponse
+from app.modules.course.schemas import UnitProgressSummaryResponse, CourseProgressSummaryResponse
 
 router = APIRouter(prefix="/progress", tags=["Progress"])
 
@@ -34,3 +34,13 @@ def get_user_unit_progress(
 ):
     """Return unit progression metrics for the current user."""
     return service.get_user_unit_progress(current_user=current_user, course_id=course_id)
+
+
+@router.get("/course/{course_id}", response_model=CourseProgressSummaryResponse, summary="Get user course progress summary")
+def get_user_course_progress(
+    course_id: str,
+    current_user: UserModel = Depends(get_current_user),
+    service: ProgressService = Depends(get_progress_service),
+):
+    """Return top-level course progression summary for the specified course."""
+    return service.get_user_course_progress(current_user=current_user, course_id=course_id)

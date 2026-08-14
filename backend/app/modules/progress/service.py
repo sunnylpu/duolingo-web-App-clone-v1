@@ -1,7 +1,12 @@
 from typing import List, Optional, Dict, Any, Set
 from sqlalchemy.orm import Session, joinedload
 from app.modules.progress.repository import ProgressRepository
-from app.modules.progress.models import SkillProgressModel, LessonAttemptModel, UnitMilestoneModel
+from app.modules.progress.models import (
+    SkillProgressModel,
+    LessonAttemptModel,
+    UnitMilestoneModel,
+    CourseMilestoneModel,
+)
 from app.modules.course.models import CourseModel, UnitModel
 from app.modules.lesson.models import SkillModel, LessonModel
 from app.modules.progress.schemas import ProgressResponse, SkillProgressSummary
@@ -11,15 +16,23 @@ from app.modules.course.schemas import (
     UnitPathResponse,
     SkillPathResponse,
     UnitProgressSummaryResponse,
+    CourseProgressSummaryResponse,
 )
 from app.modules.user.models import UserModel
 from app.shared.errors import NotFoundError
 
 UNIT_COMPLETION_XP = 50
+COURSE_COMPLETION_XP = 500
+
+COURSE_MASTER_ACHIEVEMENTS = {
+    "crs_english": "ENGLISH_MASTER",
+    "crs_spanish": "SPANISH_MASTER",
+    "crs_french": "FRENCH_MASTER",
+}
 
 
 class ProgressService:
-    """Central Progression Domain Engine — Single Source of Truth for Skill & Unit Access and Path Status.
+    """Central Progression Domain Engine — Single Source of Truth for Skill, Unit, and Course Status.
 
     Optimized Query Strategy (Phase 19+):
     ─────────────────────────────────────
@@ -27,7 +40,7 @@ class ProgressService:
         Course → Units → Skills → Lessons  (1 joined query via joinedload)
     Query 2 — Fetch all completed lesson IDs for this user:
         SELECT lesson_id FROM lesson_attempts WHERE user_id=? AND status='completed'
-    Evaluation — Python memory only; zero additional DB calls per skill or unit.
+    Evaluation — Python memory only; zero additional DB calls per skill, unit, or course.
     """
 
     def __init__(self, db_or_repo: Any):
@@ -41,14 +54,10 @@ class ProgressService:
             raise ValueError("ProgressService requires a Session or ProgressRepository instance.")
 
     # ──────────────────────────────────────────────────────────────
-    #  Private helpers — all work from pre-fetched in-memory data
+    #  Private helpers — in-memory execution
     # ──────────────────────────────────────────────────────────────
 
     def _fetch_completed_lesson_ids(self, user_id: str) -> Set[str]:
-        """
-        Single-query fetch of ALL completed lesson IDs for a user.
-        Returns a set of lesson_id strings for O(1) lookup during skill evaluation.
-        """
         rows = (
             self.db.query(LessonAttemptModel.lesson_id)
             .filter(
@@ -61,10 +70,6 @@ class ProgressService:
         return {row.lesson_id for row in rows}
 
     def _fetch_user_skill_progress_map(self, user_id: str) -> Dict[str, SkillProgressModel]:
-        """
-        Single-query fetch of all SkillProgress records for a user.
-        Returns a dict keyed by skill_id.
-        """
         records = (
             self.db.query(SkillProgressModel)
             .filter(SkillProgressModel.user_id == user_id)
@@ -137,14 +142,10 @@ class ProgressService:
         }
 
     # ──────────────────────────────────────────────────────────────
-    #  Public API — Unit Milestones & Learning Path
+    #  Public API — Milestones, Path & Course Summaries
     # ──────────────────────────────────────────────────────────────
 
     def check_and_grant_unit_milestone(self, user_id: str, unit_id: str) -> Dict[str, Any]:
-        """
-        Durable unit milestone reward check.
-        Ensures idempotent +50 XP bonus award when all skills in a unit are completed.
-        """
         existing = (
             self.db.query(UnitMilestoneModel)
             .filter(
@@ -180,6 +181,57 @@ class ProgressService:
             "already_awarded": False,
         }
 
+    def check_and_grant_course_milestone(self, user_id: str, course_id: str) -> Dict[str, Any]:
+        """
+        Durable top-level course milestone reward check (+500 XP).
+        Guarantees idempotent award and evaluates course mastery achievement.
+        """
+        existing = (
+            self.db.query(CourseMilestoneModel)
+            .filter(
+                CourseMilestoneModel.user_id == user_id,
+                CourseMilestoneModel.course_id == course_id,
+            )
+            .first()
+        )
+        if existing:
+            return {"course_bonus_xp": 0, "course_completed": False, "already_awarded": True}
+
+        milestone_id = f"cm_{user_id}_{course_id}"
+        milestone = CourseMilestoneModel(
+            id=milestone_id,
+            user_id=user_id,
+            course_id=course_id,
+            reward_xp=COURSE_COMPLETION_XP,
+        )
+        self.db.add(milestone)
+
+        from app.modules.gamification.repository import GamificationRepository
+        gamification_repo = GamificationRepository(self.db)
+        stats = gamification_repo.get_user_stats(user_id)
+        if stats:
+            stats.total_xp += COURSE_COMPLETION_XP
+            stats.daily_xp += COURSE_COMPLETION_XP
+
+        # Check and grant course master achievement if code mapped
+        ach_code = COURSE_MASTER_ACHIEVEMENTS.get(course_id)
+        if ach_code:
+            ach = gamification_repo.get_achievement_by_code(ach_code)
+            if ach:
+                gamification_repo.grant_user_achievement(
+                    user_achievement_id=f"uach_{user_id}_{ach.id}",
+                    user_id=user_id,
+                    achievement_id=ach.id,
+                )
+
+        self.db.flush()
+
+        return {
+            "course_bonus_xp": COURSE_COMPLETION_XP,
+            "course_completed": True,
+            "already_awarded": False,
+        }
+
     def evaluate_skill_state(self, user_id: str, skill: SkillModel) -> Dict[str, Any]:
         all_skills = {s.id: s for s in self.db.query(SkillModel).options(
             joinedload(SkillModel.lessons)
@@ -205,13 +257,6 @@ class ProgressService:
     def get_learning_path(
         self, current_user: UserModel, course_id: Optional[str] = None
     ) -> PathResponse:
-        """
-        Build the full learning path for a user with skill & unit progression states.
-
-        Optimized 2-query strategy:
-          Query 1: Eager-load Course → Units → Skills → Lessons
-          Query 2: All completed lesson IDs for this user
-        """
         course_query = self.db.query(CourseModel).options(
             joinedload(CourseModel.units).joinedload(UnitModel.skills).joinedload(SkillModel.lessons)
         )
@@ -244,6 +289,8 @@ class ProgressService:
         completed_units_count = 0
         total_course_skills = 0
         completed_course_skills = 0
+        total_course_lessons = 0
+        completed_course_lessons = 0
 
         for idx, unit in enumerate(sorted_units):
             skill_paths: List[SkillPathResponse] = []
@@ -257,6 +304,9 @@ class ProgressService:
                     recommended_skill_id = skill.id
                 elif state["status"] == "available" and not first_available_skill_id:
                     first_available_skill_id = skill.id
+
+                total_course_lessons += state["total_lessons"]
+                completed_course_lessons += state["lessons_completed"]
 
                 sp_id = f"sp_{current_user.id}_{skill.id}"
                 self.repository.upsert_skill_progress(
@@ -286,7 +336,6 @@ class ProgressService:
                     )
                 )
 
-            # ── Unit progression state evaluation ─────────────────────────
             u_total_skills = len(skill_paths)
             u_completed_skills = sum(1 for s in skill_paths if s.status == "completed")
             total_course_skills += u_total_skills
@@ -330,6 +379,14 @@ class ProgressService:
             else 0.0
         )
 
+        course_status = (
+            "completed"
+            if completed_units_count == total_units_count and total_units_count > 0
+            else "in_progress"
+            if completed_units_count > 0 or completed_course_skills > 0
+            else "available"
+        )
+
         course_summary = CourseSummaryResponse(
             id=course.id,
             name=course.name,
@@ -338,10 +395,13 @@ class ProgressService:
             target_language=course.target_language,
             description=course.description,
             is_active=course.is_active,
+            status=course_status,
             total_units=total_units_count,
             completed_units=completed_units_count,
             total_skills=total_course_skills,
             completed_skills=completed_course_skills,
+            total_lessons=total_course_lessons,
+            completed_lessons=completed_course_lessons,
             progress_percent=course_progress_pct,
         )
 
@@ -351,12 +411,30 @@ class ProgressService:
             units=unit_paths,
         )
 
+    def get_user_course_progress(
+        self, current_user: UserModel, course_id: str
+    ) -> CourseProgressSummaryResponse:
+        """
+        Lightweight API endpoint returning course-level progression summary for a user.
+        """
+        path = self.get_learning_path(current_user=current_user, course_id=course_id)
+        c = path.course
+        return CourseProgressSummaryResponse(
+            course_id=c.id,
+            course_name=c.name,
+            status=c.status,
+            completion_percent=c.progress_percent,
+            completed_units=c.completed_units,
+            total_units=c.total_units,
+            completed_skills=c.completed_skills,
+            total_skills=c.total_skills,
+            completed_lessons=c.completed_lessons,
+            total_lessons=c.total_lessons,
+        )
+
     def get_user_unit_progress(
         self, current_user: UserModel, course_id: Optional[str] = None
     ) -> List[UnitProgressSummaryResponse]:
-        """
-        Lightweight API endpoint returning unit progression metrics for a user.
-        """
         path = self.get_learning_path(current_user=current_user, course_id=course_id)
         results = []
         for u in path.units:

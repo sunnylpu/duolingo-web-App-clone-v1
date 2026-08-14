@@ -185,3 +185,35 @@ class UnitMilestoneModel(Base):
     # Relationships
     user = relationship("UserModel")
     unit = relationship("UnitModel")
+
+
+class CourseMilestoneModel(Base):
+    """
+    CourseMilestone model recording durable top-level course completions and mastery rewards.
+    Prevents duplicate course completion rewards (+500 XP).
+    """
+    __tablename__ = "course_milestones"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    course_id = Column(
+        String,
+        ForeignKey("courses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reward_xp = Column(Integer, default=500, nullable=False)
+    completed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "course_id", name="uq_user_course_milestone"),
+    )
+
+    # Relationships
+    user = relationship("UserModel")
+    course = relationship("CourseModel")
