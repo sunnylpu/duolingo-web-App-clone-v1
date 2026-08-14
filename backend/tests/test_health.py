@@ -6,8 +6,8 @@ from httpx import AsyncClient
 async def test_health_endpoint(client: AsyncClient):
     """
     Verify root health check endpoint GET /health.
-    Must return HTTP 200 and {"status": "ok"}.
+    Must return HTTP 200 and status ok.
     """
     response = await client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
