@@ -1,6 +1,18 @@
+"""
+JWT security utilities for the Duolingo Clone API.
+
+Design principles (Phase 36.1):
+  - JWTs include jti (unique token ID), iss (issuer), aud (audience) in addition to sub/role/exp/iat
+  - Token revocation is keyed by jti — efficient, small, storage-backend-agnostic
+  - TokenBlocklist interface is designed for a future Redis/shared-store backend;
+    the in-process Dict is explicitly documented as single-replica only.
+  - In Kubernetes (Phase 39), swap the in-process Dict for a Redis adapter
+    without changing any calling code.
+"""
+
+import uuid
 import jwt
 import bcrypt
-import hashlib
 import datetime
 import threading
 from typing import Optional, Dict
@@ -18,48 +30,104 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_PREFIX}/auth/token
 
 class TokenBlocklist:
     """
-    In-memory thread-safe revoked token storage with TTL-based expiration.
-    Guarantees true server-side invalidation upon logout.
+    Storage-independent revoked-token registry keyed by jti (JWT ID).
+
+    Architecture note:
+      This implementation stores revoked jti values in a process-local Dict.
+      It is intentionally designed with a clean interface so the Dict can be
+      replaced by a Redis adapter in Phase 39 (Kubernetes) without changing
+      any calling code:
+
+          token_blocklist = RedisTokenBlocklist(redis_client)
+
+      Until then, this correctly provides revocation for single-replica
+      deployments and development/test environments.
     """
 
     def __init__(self):
-        self._revoked_tokens: Dict[str, float] = {}  # token_hash -> exp_timestamp
+        # jti -> exp_timestamp (UTC epoch float)
+        self._revoked_jtis: Dict[str, float] = {}
         self._lock = threading.Lock()
 
-    def revoke(self, token: str, exp_timestamp: Optional[float] = None) -> None:
-        if not token:
+    def revoke_jti(self, jti: str, exp_timestamp: Optional[float] = None) -> None:
+        """Mark a token JTI as revoked until its expiration time."""
+        if not jti:
             return
         if exp_timestamp is None:
-            # Default to 24h expiration
             exp_timestamp = (
                 datetime.datetime.now(datetime.timezone.utc)
                 + datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
             ).timestamp()
 
-        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         with self._lock:
-            self._revoked_tokens[token_hash] = exp_timestamp
+            self._revoked_jtis[jti] = exp_timestamp
             self._prune()
 
-    def is_revoked(self, token: str) -> bool:
-        if not token:
+    def is_jti_revoked(self, jti: str) -> bool:
+        """Returns True if the given jti has been revoked and is still within its TTL."""
+        if not jti:
             return False
-        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         with self._lock:
-            return token_hash in self._revoked_tokens
+            return jti in self._revoked_jtis
 
     def _prune(self) -> None:
+        """Remove expired entries to bound memory usage."""
         now = datetime.datetime.now(datetime.timezone.utc).timestamp()
-        self._revoked_tokens = {
-            k: exp for k, exp in self._revoked_tokens.items() if exp > now
+        self._revoked_jtis = {
+            jti: exp for jti, exp in self._revoked_jtis.items() if exp > now
         }
 
     def clear(self) -> None:
+        """Reset for test isolation."""
         with self._lock:
-            self._revoked_tokens.clear()
+            self._revoked_jtis.clear()
+
+    # ---------------------------------------------------------------------------
+    # Legacy compatibility shim — kept so existing call sites still work.
+    # Internally delegates to jti-based revocation by decoding the token first.
+    # ---------------------------------------------------------------------------
+    def revoke(self, token: str, exp_timestamp: Optional[float] = None) -> None:
+        """Revoke a raw JWT by extracting and revoking its jti claim."""
+        if not token:
+            return
+        try:
+            payload = jwt.decode(
+                token,
+                settings.JWT_SECRET_KEY,
+                algorithms=["HS256"],
+                options={"verify_exp": False},
+                audience=settings.JWT_AUDIENCE,
+                issuer=settings.JWT_ISSUER,
+            )
+            jti = payload.get("jti")
+            exp = exp_timestamp or payload.get("exp")
+            if jti:
+                self.revoke_jti(jti, exp)
+        except Exception:
+            # If token cannot be decoded (expired, malformed) nothing to revoke
+            pass
+
+    def is_revoked(self, token: str) -> bool:
+        """Check revocation for a raw JWT via its jti claim (legacy shim)."""
+        if not token:
+            return False
+        try:
+            payload = jwt.decode(
+                token,
+                settings.JWT_SECRET_KEY,
+                algorithms=["HS256"],
+                options={"verify_exp": False},
+                audience=settings.JWT_AUDIENCE,
+                issuer=settings.JWT_ISSUER,
+            )
+            jti = payload.get("jti")
+            return self.is_jti_revoked(jti) if jti else False
+        except Exception:
+            return False
 
 
 # Global singleton instance
+# Replace with RedisTokenBlocklist(redis_client) in Phase 39 Kubernetes deployment
 token_blocklist = TokenBlocklist()
 
 
@@ -82,36 +150,70 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, role: str = "user", expires_delta: Optional[datetime.timedelta] = None) -> str:
-    """Generates signed JWT access token."""
-    if expires_delta:
-        expire = datetime.datetime.now(datetime.timezone.utc) + expires_delta
-    else:
-        expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+def create_access_token(
+    user_id: str,
+    role: str = "user",
+    expires_delta: Optional[datetime.timedelta] = None,
+) -> str:
+    """
+    Generates a signed JWT access token with OWASP-recommended claims:
+      sub  — subject (user ID)
+      role — RBAC role
+      jti  — unique token ID for server-side revocation
+      iss  — issuer (this API service)
+      aud  — audience (intended client)
+      iat  — issued at
+      exp  — expiration
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expire = now + (expires_delta or datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
 
     payload = {
         "sub": user_id,
         "role": role,
+        "jti": str(uuid.uuid4()),
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
+        "iat": now,
         "exp": expire,
-        "iat": datetime.datetime.now(datetime.timezone.utc),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm="HS256")
 
 
 def decode_access_token(token: str) -> dict:
-    """Decodes and validates JWT access token with revocation checking."""
-    if token_blocklist.is_revoked(token):
-        raise UnauthorizedError("Session has been revoked.", code="SESSION_REVOKED")
+    """
+    Decodes and validates a JWT access token.
 
+    Validates:
+      - Signature (HS256 + secret)
+      - Expiration (exp)
+      - Issuer (iss == JWT_ISSUER)
+      - Audience (aud == JWT_AUDIENCE)
+      - jti not in revocation blocklist
+    """
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
-        return payload
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=["HS256"],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+        )
     except jwt.ExpiredSignatureError:
         raise UnauthorizedError("Authentication token has expired.", code="SESSION_EXPIRED")
+    except jwt.InvalidAudienceError:
+        raise UnauthorizedError("Invalid token audience.", code="AUTHENTICATION_REQUIRED")
+    except jwt.InvalidIssuerError:
+        raise UnauthorizedError("Invalid token issuer.", code="AUTHENTICATION_REQUIRED")
     except jwt.InvalidTokenError:
         raise UnauthorizedError("Invalid authentication token.", code="AUTHENTICATION_REQUIRED")
+
+    # Check jti revocation after successful decode
+    jti = payload.get("jti")
+    if jti and token_blocklist.is_jti_revoked(jti):
+        raise UnauthorizedError("Session has been revoked.", code="SESSION_REVOKED")
+
+    return payload
 
 
 def get_current_user(
@@ -122,8 +224,8 @@ def get_current_user(
     """
     FastAPI security dependency resolving current authenticated learner identity.
     Token extraction order:
-    1. HttpOnly 'auth_token' cookie
-    2. 'Authorization: Bearer <token>' header
+      1. 'Authorization: Bearer <token>' header
+      2. HttpOnly 'auth_token' cookie
     """
     token = header_token or request.cookies.get("auth_token")
 
@@ -138,7 +240,7 @@ def get_current_user(
             raise UnauthorizedError("User account not found or inactive.", code="ACCOUNT_DISABLED")
         return user
 
-    # Strict development fallback only if explicitly enabled
+    # Strict development fallback — never active in production
     if settings.APP_ENV == "development" and getattr(settings, "ALLOW_DEV_AUTH_BYPASS", False):
         demo_user = db.query(UserModel).filter(UserModel.id == "usr_demo").first()
         if demo_user:

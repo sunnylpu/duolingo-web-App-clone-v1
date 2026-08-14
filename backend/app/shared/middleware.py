@@ -1,3 +1,12 @@
+"""
+FastAPI middleware stack for the Duolingo Clone API.
+
+Phase 36.1 changes:
+  - CSRFProtectionMiddleware: exact URL-parsed origin/referer comparison
+    (scheme + hostname + port) — no more prefix or substring matching.
+  - CORSMiddleware: explicit allow_methods and allow_headers instead of ["*"]
+"""
+
 import time
 import uuid
 import json
@@ -11,6 +20,30 @@ from app.config import settings
 from app.shared.metrics import metrics_registry
 
 logger = logging.getLogger("duolingo.api")
+
+
+def _normalize_origin(url: str) -> str:
+    """
+    Returns 'scheme://hostname:port' for strict equality comparison.
+    Port is omitted only when it is the default for the scheme
+    (80 for http, 443 for https), matching browser Origin header semantics.
+    """
+    try:
+        parsed = urlparse(url)
+        scheme = (parsed.scheme or "").lower()
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+
+        # Omit default ports to match browser behavior
+        default_ports = {"http": 80, "https": 443}
+        if port and default_ports.get(scheme) == port:
+            port = None
+
+        if port:
+            return f"{scheme}://{host}:{port}"
+        return f"{scheme}://{host}"
+    except Exception:
+        return ""
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -81,7 +114,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     """
     CSRF defense for cookie-authenticated state-changing operations.
-    Validates Origin/Referer and X-Requested-With headers when session cookie is used.
+
+    Strategy (OWASP-aligned):
+      1. Only applies to cookie-authenticated mutation requests (no Bearer header present).
+      2. Accepts requests carrying X-Requested-With: XMLHttpRequest or Sec-Fetch-Site: same-origin/same-site.
+      3. For Origin header: performs exact scheme+host+port comparison against the configured
+         CORS allow-list — no prefix or substring matching.
+      4. For Referer header (fallback when Origin absent): extracts scheme+host+port and
+         compares exactly — no in-string containment checks.
+      5. Rejects everything else with 403 CSRF_REJECTED.
     """
 
     EXEMPT_PATHS = {
@@ -90,35 +131,37 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         f"{settings.API_PREFIX}/auth/token",
     }
 
+    # Pre-compute normalized allowed origins for O(1) lookup
+    @property
+    def _allowed_origins(self) -> set:
+        return {_normalize_origin(o) for o in settings.cors_origins_list}
+
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-            # Only enforce if request relies on cookie authentication
+            # Only enforce when the request relies on cookie authentication
             has_cookie_session = bool(request.cookies.get("auth_token"))
             has_bearer_auth = bool(request.headers.get("authorization"))
 
             if has_cookie_session and not has_bearer_auth and request.url.path not in self.EXEMPT_PATHS:
-                origin = request.headers.get("origin")
-                referer = request.headers.get("referer")
                 req_with = request.headers.get("x-requested-with")
                 sec_site = request.headers.get("sec-fetch-site")
 
-                # Allowed if custom header is present (browser AJAX) or same-origin/site
+                # Accept AJAX custom header or same-origin browser navigation
                 is_safe_ajax = req_with == "XMLHttpRequest" or sec_site in {"same-origin", "same-site"}
 
                 is_valid_origin = False
-                if origin:
-                    is_valid_origin = any(
-                        origin.startswith(allowed.rstrip("/"))
-                        for allowed in settings.cors_origins_list
-                    )
-                elif referer:
-                    ref_host = urlparse(referer).netloc
-                    is_valid_origin = any(
-                        ref_host in allowed
-                        for allowed in settings.cors_origins_list
-                    )
+                origin_hdr = request.headers.get("origin")
+                referer_hdr = request.headers.get("referer")
+                allowed = self._allowed_origins
 
-                # Reject if neither safe origin nor AJAX header is verified
+                if origin_hdr:
+                    # Exact origin comparison — prevents example.com.evil.com bypass
+                    is_valid_origin = _normalize_origin(origin_hdr) in allowed
+                elif referer_hdr:
+                    # Extract origin portion of Referer for exact comparison
+                    is_valid_origin = _normalize_origin(referer_hdr) in allowed
+
+                # Reject if neither a safe AJAX header nor a trusted origin is verified
                 if not (is_safe_ajax or is_valid_origin):
                     return JSONResponse(
                         status_code=403,
@@ -139,8 +182,15 @@ def setup_middleware(app: FastAPI) -> None:
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        # Explicit method list — no wildcard in production API
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        # Explicit header list — only headers this API actually uses
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Requested-With",
+            "X-Request-ID",
+        ],
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)

@@ -1,3 +1,8 @@
+"""
+Centralized Application Configuration managed via Pydantic Settings.
+Environment variables override all default values.
+"""
+
 import os
 from typing import List, Union
 from pydantic import Field, model_validator
@@ -29,6 +34,10 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = Field(default="super_secret_duolingo_key_change_in_production_32bytes_min")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=1440)  # 24 hours
     ALLOW_DEV_AUTH_BYPASS: bool = Field(default=False)
+
+    # JWT Claims — issuer and audience for strict validation
+    JWT_ISSUER: str = Field(default="duolingo-clone-api")
+    JWT_AUDIENCE: str = Field(default="duolingo-clone-web")
 
     # Observability & Rate Limit Parameters
     SLOW_REQUEST_THRESHOLD_MS: int = Field(default=500)

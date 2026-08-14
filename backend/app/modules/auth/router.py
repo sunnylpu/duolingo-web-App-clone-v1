@@ -69,7 +69,9 @@ def get_api_token(req: LoginRequest, request: Request, db: Session = Depends(get
 @router.post("/logout", summary="Invalidate authenticated learner session")
 def logout_user(request: Request, response: Response):
     """
-    Revokes the active JWT token in the server-side blocklist and clears the HttpOnly authentication cookie.
+    Revokes the active JWT's jti in the server-side blocklist and clears the HttpOnly cookie.
+    Revocation is keyed by jti (unique token identifier) rather than the raw token string,
+    making the blocklist small and ready for a shared-store backend (Phase 39 / Redis).
     """
     token = request.cookies.get("auth_token")
     if not token:
@@ -80,10 +82,13 @@ def logout_user(request: Request, response: Response):
     if token:
         try:
             payload = decode_access_token(token)
+            jti = payload.get("jti")
             exp = payload.get("exp")
-            token_blocklist.revoke(token, exp)
+            if jti:
+                token_blocklist.revoke_jti(jti, exp)
         except Exception:
-            token_blocklist.revoke(token)
+            # If token is already expired/invalid, nothing to revoke
+            pass
 
     response.delete_cookie(key="auth_token", path="/")
     return {"status": "ok", "message": "Logged out and session revoked successfully"}
