@@ -1,6 +1,7 @@
 import { CourseSummary } from "./course";
 
 export type SkillStatus = "locked" | "available" | "in_progress" | "completed";
+export type UnitStatus = "locked" | "available" | "in_progress" | "completed";
 
 export interface SkillPath {
   id: string;
@@ -20,6 +21,10 @@ export interface UnitPath {
   title: string;
   description: string | null;
   order_index: number;
+  status?: UnitStatus;
+  completion_percent?: number;
+  completed_skills?: number;
+  total_skills?: number;
   skills: SkillPath[];
 }
 

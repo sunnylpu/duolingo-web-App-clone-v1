@@ -27,6 +27,14 @@ export interface LessonCompleteResult {
   attempt_id: string | number;
   status: string;
   xp_earned: number;
+  unit_bonus_xp?: number;
+  unit_completed?: boolean;
+  unit?: {
+    id: string;
+    title: string;
+    status: string;
+    completion_percent: number;
+  } | null;
   score: number;
   skill_progress: {
     completion_percent: number;

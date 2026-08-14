@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { userService } from "@/services/user-service";
 import { achievementService } from "@/services/achievement-service";
-import { UserProfile, UserAchievement } from "@/types";
+import { courseService } from "@/services/course-service";
+import { UserProfile, UserAchievement, CourseSummary } from "@/types";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card } from "@/components/ui/Card";
@@ -12,9 +13,19 @@ import { StreakDisplay } from "@/components/gamification/StreakDisplay";
 import { DailyActivitySummary } from "@/components/gamification/DailyActivitySummary";
 import { AchievementCard } from "@/features/achievements/components/AchievementCard";
 
+const COURSE_FLAGS: Record<string, string> = {
+  crs_english: "🇬🇧",
+  crs_spanish: "🇪🇸",
+  crs_french: "🇫🇷",
+  en: "🇬🇧",
+  es: "🇪🇸",
+  fr: "🇫🇷",
+};
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [achievements, setAchievements] = useState<UserAchievement[]>([]);
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,12 +33,14 @@ export default function ProfilePage() {
     setLoading(true);
     setError(null);
     try {
-      const [profileRes, achRes] = await Promise.all([
+      const [profileRes, achRes, coursesRes] = await Promise.all([
         userService.getUserProfile(),
         achievementService.getMyAchievements(),
+        courseService.getCourses().catch(() => []),
       ]);
       setProfile(profileRes);
       setAchievements(achRes);
+      setCourses(coursesRes);
     } catch (err: any) {
       setError(err?.message || "Failed to load user profile from backend.");
     } finally {
@@ -99,33 +112,36 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Learning Progress Summary */}
+      {/* Multi-Course Progress Breakdown */}
       <div>
-        <h2 className="text-lg font-bold text-gray-200 mb-3">Course Progress Summary</h2>
-        <Card className="p-6 bg-[#182830] border-2 border-[#37464f] space-y-4">
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="p-3 bg-[#131f24] rounded-2xl border border-[#37464f]">
-              <div className="text-xs text-gray-400 font-bold uppercase">Lessons Done</div>
-              <div className="text-xl font-black text-[#1cb0f6] mt-1">📚 {learning.lessons_completed}</div>
-            </div>
-            <div className="p-3 bg-[#131f24] rounded-2xl border border-[#37464f]">
-              <div className="text-xs text-gray-400 font-bold uppercase">Skills Mastered</div>
-              <div className="text-xl font-black text-[#58cc02] mt-1">👑 {learning.skills_completed}</div>
-            </div>
-            <div className="p-3 bg-[#131f24] rounded-2xl border border-[#37464f]">
-              <div className="text-xs text-gray-400 font-bold uppercase">In Progress</div>
-              <div className="text-xl font-black text-[#ffc800] mt-1">📖 {learning.skills_in_progress}</div>
-            </div>
-          </div>
+        <h2 className="text-lg font-bold text-gray-200 mb-3">Course Unit Progression</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {courses.map((c) => {
+            const flag = COURSE_FLAGS[c.id] || COURSE_FLAGS[c.code] || "🌐";
+            const totalUnits = c.total_units || (c.code === "en" ? 8 : c.code === "es" ? 5 : 3);
+            const completedUnits = c.completed_units || 0;
+            const totalSkills = c.total_skills || (c.code === "en" ? 32 : c.code === "es" ? 20 : 14);
+            const completedSkills = c.completed_skills || 0;
+            const pct = c.progress_percent || 0;
 
-          <div className="space-y-2 pt-2">
-            <div className="flex justify-between items-center text-xs font-black">
-              <span className="text-gray-300 uppercase tracking-wider">Overall Spanish Progress</span>
-              <span className="text-[#58cc02]">{learning.course_progress_percent}%</span>
-            </div>
-            <ProgressBar value={learning.course_progress_percent} height="h-3.5" />
-          </div>
-        </Card>
+            return (
+              <Card key={c.id} className="p-5 bg-[#182830] border-2 border-[#37464f] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-black text-white flex items-center gap-2">
+                    <span className="text-2xl">{flag}</span>
+                    <span>{c.name}</span>
+                  </span>
+                  <span className="text-xs font-extrabold text-[#58cc02]">{pct}%</span>
+                </div>
+                <div className="text-xs text-gray-400 font-bold space-y-1">
+                  <div>{completedUnits} / {totalUnits} units completed</div>
+                  <div>{completedSkills} / {totalSkills} skills mastered</div>
+                </div>
+                <ProgressBar value={pct} height="h-2.5" />
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
       {/* Today's Daily Activity Widget */}

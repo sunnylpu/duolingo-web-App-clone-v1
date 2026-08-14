@@ -20,6 +20,8 @@ class CourseSummaryResponse(BaseModel):
     target_language: str
     description: Optional[str] = None
     is_active: bool
+    total_units: int = 0
+    completed_units: int = 0
     total_skills: int = 0
     completed_skills: int = 0
     progress_percent: float = 0.0
@@ -53,7 +55,22 @@ class UnitPathResponse(BaseModel):
     title: str
     description: Optional[str] = None
     order_index: int
+    status: str = "locked"  # locked, available, in_progress, completed
+    completion_percent: float = 0.0
+    completed_skills: int = 0
+    total_skills: int = 0
     skills: List[SkillPathResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UnitProgressSummaryResponse(BaseModel):
+    unit_id: str
+    title: str
+    status: str
+    completion_percent: float
+    completed_skills: int
+    total_skills: int
 
     model_config = ConfigDict(from_attributes=True)
 

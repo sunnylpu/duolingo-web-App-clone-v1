@@ -75,6 +75,9 @@ class LessonCompleteResponse(BaseModel):
     attempt_id: Any
     status: str
     xp_earned: int
+    unit_bonus_xp: int = 0
+    unit_completed: bool = False
+    unit: Optional[Dict[str, Any]] = None
     score: int
     skill_progress: Dict[str, Any]
     streak: Optional[Dict[str, Any]] = None

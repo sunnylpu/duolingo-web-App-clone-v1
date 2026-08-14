@@ -13,15 +13,20 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
   onContinue,
 }) => {
   const xpEarned = result?.xp_earned ?? 10;
+  const unitBonusXp = result?.unit_bonus_xp ?? 0;
+  const totalXpAwarded = xpEarned + unitBonusXp;
   const score = result?.score ?? 100;
   const progressPercent = Math.round(result?.skill_progress?.completion_percent ?? 100);
   const crownLevel = result?.skill_progress?.crown_level ?? 1;
 
   const currentStreak = result?.streak?.current ?? 1;
   const streakIncreased = result?.streak?.increased ?? false;
-  const dailyXp = result?.daily_progress?.xp ?? xpEarned;
+  const dailyXp = result?.daily_progress?.xp ?? totalXpAwarded;
   const dailyGoalXp = result?.daily_progress?.goal ?? 30;
   const goalJustCompleted = result?.daily_progress?.goal_just_completed ?? false;
+
+  const unitCompleted = result?.unit_completed ?? false;
+  const unitTitle = result?.unit?.title || "Unit Milestone";
 
   const newlyEarnedAchievements: any[] = result?.achievements?.newly_earned ?? [];
 
@@ -38,7 +43,19 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
           <p className="text-xs text-gray-400 font-bold mt-1">Lesson completed successfully</p>
         </div>
 
-        {/* Milestone Toasts */}
+        {/* Milestone Toasts & Unit Celebration */}
+        {unitCompleted && (
+          <div className="p-4 bg-emerald-500/20 border-2 border-emerald-500 rounded-2xl space-y-1 text-center animate-bounce shadow-lg shadow-emerald-500/20">
+            <div className="text-3xl">🏆</div>
+            <div className="text-xs font-black uppercase text-emerald-400 tracking-wider">
+              UNIT COMPLETE! (+{unitBonusXp || 50} XP BONUS)
+            </div>
+            <div className="text-base font-extrabold text-white">
+              {unitTitle} Mastered
+            </div>
+          </div>
+        )}
+
         {streakIncreased && (
           <div className="p-3 bg-[#ff9600]/20 border border-[#ff9600] rounded-2xl flex items-center justify-center gap-2 text-sm font-black text-[#ff9600]">
             <span className="text-xl">🔥</span>
@@ -74,8 +91,13 @@ export const LessonComplete: React.FC<LessonCompleteProps> = ({
             <div className="text-xs text-gray-400 font-bold uppercase tracking-wider">TOTAL XP</div>
             <div className="text-2xl font-black text-[#ffc800] mt-1 flex items-center justify-center gap-1">
               <span>⭐</span>
-              <span>+{xpEarned}</span>
+              <span>+{totalXpAwarded}</span>
             </div>
+            {unitBonusXp > 0 && (
+              <div className="text-[10px] text-emerald-400 font-bold mt-0.5">
+                (Lesson +{xpEarned}, Unit +{unitBonusXp})
+              </div>
+            )}
           </div>
 
           <div className="p-4 bg-[#131f24] rounded-2xl border border-[#37464f]">

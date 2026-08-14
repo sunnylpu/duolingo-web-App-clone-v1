@@ -153,3 +153,35 @@ class DailyActivityModel(Base):
 
     # Relationships
     user = relationship("UserModel", back_populates="daily_activities")
+
+
+class UnitMilestoneModel(Base):
+    """
+    UnitMilestone model recording durable unit completions and milestone rewards.
+    Prevents duplicate unit completion rewards.
+    """
+    __tablename__ = "unit_milestones"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    unit_id = Column(
+        String,
+        ForeignKey("units.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reward_xp = Column(Integer, default=50, nullable=False)
+    completed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "unit_id", name="uq_user_unit_milestone"),
+    )
+
+    # Relationships
+    user = relationship("UserModel")
+    unit = relationship("UnitModel")

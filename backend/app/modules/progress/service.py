@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict, Any, Set
 from sqlalchemy.orm import Session, joinedload
 from app.modules.progress.repository import ProgressRepository
-from app.modules.progress.models import SkillProgressModel, LessonAttemptModel
+from app.modules.progress.models import SkillProgressModel, LessonAttemptModel, UnitMilestoneModel
 from app.modules.course.models import CourseModel, UnitModel
 from app.modules.lesson.models import SkillModel, LessonModel
 from app.modules.progress.schemas import ProgressResponse, SkillProgressSummary
@@ -10,25 +10,24 @@ from app.modules.course.schemas import (
     CourseSummaryResponse,
     UnitPathResponse,
     SkillPathResponse,
+    UnitProgressSummaryResponse,
 )
 from app.modules.user.models import UserModel
 from app.shared.errors import NotFoundError
 
+UNIT_COMPLETION_XP = 50
+
 
 class ProgressService:
-    """Central Progression Domain Engine — Single Source of Truth for Skill Access and Path Status.
+    """Central Progression Domain Engine — Single Source of Truth for Skill & Unit Access and Path Status.
 
     Optimized Query Strategy (Phase 19+):
     ─────────────────────────────────────
-    Previous (N+1): For N skills, issued ~4N SQL queries (all skills + lessons + attempts +
-    progress per skill, recursively for prerequisite checks).
-
-    Current (2-query):
-        Query 1 — Eager-load full hierarchy:
-            Course → Units → Skills → Lessons  (1 joined query via joinedload)
-        Query 2 — Fetch all completed lesson IDs for this user:
-            SELECT lesson_id FROM lesson_attempts WHERE user_id=? AND status='completed'
-        Evaluation — Python memory only; zero additional DB calls per skill.
+    Query 1 — Eager-load full hierarchy:
+        Course → Units → Skills → Lessons  (1 joined query via joinedload)
+    Query 2 — Fetch all completed lesson IDs for this user:
+        SELECT lesson_id FROM lesson_attempts WHERE user_id=? AND status='completed'
+    Evaluation — Python memory only; zero additional DB calls per skill or unit.
     """
 
     def __init__(self, db_or_repo: Any):
@@ -81,29 +80,15 @@ class ProgressService:
         skill_map: Dict[str, SkillModel],
         user_progress_map: Dict[str, SkillProgressModel],
     ) -> Dict[str, Any]:
-        """
-        Pure in-memory skill-state evaluation.
-        No database queries are issued inside this method.
-
-        Parameters:
-            skill                — the SkillModel to evaluate
-            completed_lesson_ids — set of all lesson IDs the user has completed
-            skill_status_cache   — memoization cache {skill_id -> status} to avoid re-evaluating
-            skill_map            — dict {skill_id -> SkillModel} for prerequisite lookup
-            user_progress_map    — dict {skill_id -> SkillProgressModel} for seeded states
-        """
         if skill.id in skill_status_cache:
-            # Already evaluated (memoized) — reconstruct minimal dict for caller
             cached_status = skill_status_cache[skill.id]
             return {"status": cached_status}
 
-        # --- Lesson accounting ---
         lesson_ids = [l.id for l in skill.lessons]
         total_lessons = max(1, len(lesson_ids))
         unique_completed = completed_lesson_ids.intersection(lesson_ids)
         completed_count = len(unique_completed)
 
-        # --- Completion % and crown ---
         user_prog = user_progress_map.get(skill.id)
         if completed_count > 0:
             completion_percent = float(min(100.0, (completed_count / total_lessons) * 100.0))
@@ -115,7 +100,6 @@ class ProgressService:
             completion_percent = 0.0
             crown_level = 0
 
-        # --- Prerequisite check (fully in-memory via recursion + cache) ---
         prereq_completed = True
         prereq_title = None
         if skill.prerequisite_skill_id:
@@ -127,7 +111,6 @@ class ProgressService:
                 )
                 prereq_completed = prereq_eval["status"] == "completed"
 
-        # --- Status determination ---
         if completion_percent >= 100.0 or (user_prog and user_prog.status == "completed"):
             status = "completed"
             completion_percent = 100.0
@@ -138,7 +121,6 @@ class ProgressService:
         else:
             status = "locked"
 
-        # Memoize
         skill_status_cache[skill.id] = status
 
         return {
@@ -155,17 +137,50 @@ class ProgressService:
         }
 
     # ──────────────────────────────────────────────────────────────
-    #  Public API — used by router/other services
+    #  Public API — Unit Milestones & Learning Path
     # ──────────────────────────────────────────────────────────────
 
-    def evaluate_skill_state(self, user_id: str, skill: SkillModel) -> Dict[str, Any]:
+    def check_and_grant_unit_milestone(self, user_id: str, unit_id: str) -> Dict[str, Any]:
         """
-        Single-skill evaluation (used by lesson service for access control).
-        Fetches per-skill data individually when called in isolation.
+        Durable unit milestone reward check.
+        Ensures idempotent +50 XP bonus award when all skills in a unit are completed.
+        """
+        existing = (
+            self.db.query(UnitMilestoneModel)
+            .filter(
+                UnitMilestoneModel.user_id == user_id,
+                UnitMilestoneModel.unit_id == unit_id,
+            )
+            .first()
+        )
+        if existing:
+            return {"unit_bonus_xp": 0, "unit_completed": False, "already_awarded": True}
 
-        For bulk path evaluation, prefer get_learning_path() which uses the
-        optimized 2-query strategy internally.
-        """
+        milestone_id = f"um_{user_id}_{unit_id}"
+        milestone = UnitMilestoneModel(
+            id=milestone_id,
+            user_id=user_id,
+            unit_id=unit_id,
+            reward_xp=UNIT_COMPLETION_XP,
+        )
+        self.db.add(milestone)
+
+        from app.modules.gamification.repository import GamificationRepository
+        gamification_repo = GamificationRepository(self.db)
+        stats = gamification_repo.get_user_stats(user_id)
+        if stats:
+            stats.total_xp += UNIT_COMPLETION_XP
+            stats.daily_xp += UNIT_COMPLETION_XP
+
+        self.db.flush()
+
+        return {
+            "unit_bonus_xp": UNIT_COMPLETION_XP,
+            "unit_completed": True,
+            "already_awarded": False,
+        }
+
+    def evaluate_skill_state(self, user_id: str, skill: SkillModel) -> Dict[str, Any]:
         all_skills = {s.id: s for s in self.db.query(SkillModel).options(
             joinedload(SkillModel.lessons)
         ).all()}
@@ -191,16 +206,12 @@ class ProgressService:
         self, current_user: UserModel, course_id: Optional[str] = None
     ) -> PathResponse:
         """
-        Build the full learning path for a user.
+        Build the full learning path for a user with skill & unit progression states.
 
-        Optimized to use exactly 2 primary SQL queries:
+        Optimized 2-query strategy:
           Query 1: Eager-load Course → Units → Skills → Lessons
-          Query 2: All completed lesson IDs for this user (1 SELECT DISTINCT)
-          (+ 1 query for user skill progress map)
-
-        All skill-state evaluations happen in Python memory.
+          Query 2: All completed lesson IDs for this user
         """
-        # ── Query 1: Eager-load full Course hierarchy ──────────────────
         course_query = self.db.query(CourseModel).options(
             joinedload(CourseModel.units).joinedload(UnitModel.skills).joinedload(SkillModel.lessons)
         )
@@ -214,25 +225,27 @@ class ProgressService:
         if not course:
             raise NotFoundError("No active courses found for learning path.")
 
-        # ── Query 2: All completed lesson IDs for this user ────────────
         completed_lesson_ids = self._fetch_completed_lesson_ids(current_user.id)
-
-        # ── Query 3: All SkillProgress records for this user ──────────
         user_progress_map = self._fetch_user_skill_progress_map(current_user.id)
 
-        # ── Build flat skill map from eager-loaded hierarchy ───────────
         skill_map: Dict[str, SkillModel] = {}
         for unit in course.units:
             for skill in unit.skills:
                 skill_map[skill.id] = skill
 
-        # ── Evaluate all skills in memory ──────────────────────────────
         skill_status_cache: Dict[str, str] = {}
         unit_paths: List[UnitPathResponse] = []
         recommended_skill_id: Optional[str] = None
         first_available_skill_id: Optional[str] = None
+        prev_unit_completed = True
 
-        for unit in sorted(course.units, key=lambda u: u.order_index):
+        sorted_units = sorted(course.units, key=lambda u: u.order_index)
+        total_units_count = len(sorted_units)
+        completed_units_count = 0
+        total_course_skills = 0
+        completed_course_skills = 0
+
+        for idx, unit in enumerate(sorted_units):
             skill_paths: List[SkillPathResponse] = []
 
             for skill in sorted(unit.skills, key=lambda s: s.order_index):
@@ -245,7 +258,6 @@ class ProgressService:
                 elif state["status"] == "available" and not first_available_skill_id:
                     first_available_skill_id = skill.id
 
-                # Persist updated progress (non-blocking flush)
                 sp_id = f"sp_{current_user.id}_{skill.id}"
                 self.repository.upsert_skill_progress(
                     progress_id=sp_id,
@@ -274,29 +286,93 @@ class ProgressService:
                     )
                 )
 
+            # ── Unit progression state evaluation ─────────────────────────
+            u_total_skills = len(skill_paths)
+            u_completed_skills = sum(1 for s in skill_paths if s.status == "completed")
+            total_course_skills += u_total_skills
+            completed_course_skills += u_completed_skills
+
+            u_completion_percent = (
+                round((u_completed_skills / u_total_skills) * 100.0, 1) if u_total_skills > 0 else 0.0
+            )
+
+            if u_completed_skills == u_total_skills and u_total_skills > 0:
+                unit_status = "completed"
+                completed_units_count += 1
+            elif u_completed_skills > 0 or any(s.status in ("in_progress", "completed") for s in skill_paths):
+                unit_status = "in_progress"
+            elif idx == 0 or prev_unit_completed or any(s.status == "available" for s in skill_paths):
+                unit_status = "available"
+            else:
+                unit_status = "locked"
+
+            prev_unit_completed = (unit_status == "completed")
+
             unit_paths.append(
                 UnitPathResponse(
                     id=unit.id,
                     title=unit.title,
                     description=unit.description,
                     order_index=unit.order_index,
+                    status=unit_status,
+                    completion_percent=u_completion_percent,
+                    completed_skills=u_completed_skills,
+                    total_skills=u_total_skills,
                     skills=skill_paths,
                 )
             )
 
         final_recommended = recommended_skill_id or first_available_skill_id
 
+        course_progress_pct = (
+            round((completed_course_skills / total_course_skills) * 100.0, 1)
+            if total_course_skills > 0
+            else 0.0
+        )
+
+        course_summary = CourseSummaryResponse(
+            id=course.id,
+            name=course.name,
+            code=course.code,
+            source_language=course.source_language,
+            target_language=course.target_language,
+            description=course.description,
+            is_active=course.is_active,
+            total_units=total_units_count,
+            completed_units=completed_units_count,
+            total_skills=total_course_skills,
+            completed_skills=completed_course_skills,
+            progress_percent=course_progress_pct,
+        )
+
         return PathResponse(
-            course=CourseSummaryResponse.model_validate(course),
+            course=course_summary,
             recommended_skill_id=final_recommended,
             units=unit_paths,
         )
 
+    def get_user_unit_progress(
+        self, current_user: UserModel, course_id: Optional[str] = None
+    ) -> List[UnitProgressSummaryResponse]:
+        """
+        Lightweight API endpoint returning unit progression metrics for a user.
+        """
+        path = self.get_learning_path(current_user=current_user, course_id=course_id)
+        results = []
+        for u in path.units:
+            results.append(
+                UnitProgressSummaryResponse(
+                    unit_id=u.id,
+                    title=u.title,
+                    status=u.status,
+                    completion_percent=u.completion_percent,
+                    completed_skills=u.completed_skills,
+                    total_skills=u.total_skills,
+                )
+            )
+        return results
+
     def get_user_progress_summary(self, current_user: UserModel) -> ProgressResponse:
-        """
-        Optimized progress summary using the same 2-query strategy.
-        """
-        # Eager-load all skills with their lessons
         all_skills = (
             self.db.query(SkillModel)
             .options(joinedload(SkillModel.lessons))
