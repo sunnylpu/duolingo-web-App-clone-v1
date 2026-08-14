@@ -89,11 +89,8 @@ def test_audit_service_recording(db_session: Session):
 
 
 def test_ops_overview_endpoint():
-    admin_login = client.post(
-        "/api/v1/auth/login",
-        json={"email_or_username": "admin", "password": "adminpassword123"},
-    )
-    admin_token = admin_login.json()["access_token"]
+    from app.shared.security import create_access_token
+    admin_token = create_access_token("usr_admin", role="admin")
     response = client.get(
         "/api/v1/ops/overview",
         headers={"Authorization": f"Bearer {admin_token}"},

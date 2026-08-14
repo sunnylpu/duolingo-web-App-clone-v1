@@ -23,7 +23,7 @@ export class ApiError extends Error {
 
   constructor(status: number, code: string, message: string, details?: any) {
     super(message);
-    self.name = "ApiError";
+    this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
@@ -41,10 +41,12 @@ export async function fetchApi<T>(
   const defaultHeaders: HeadersInit = {
     "Content-Type": "application/json",
     Accept: "application/json",
+    "X-Requested-With": "XMLHttpRequest",
   };
 
   try {
     const response = await fetch(url, {
+      credentials: "include",
       ...options,
       headers: {
         ...defaultHeaders,

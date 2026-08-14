@@ -1,7 +1,9 @@
 import jwt
 import bcrypt
+import hashlib
 import datetime
-from typing import Optional
+import threading
+from typing import Optional, Dict
 from fastapi import Request, Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -11,7 +13,54 @@ from app.shared.database import get_db
 from app.shared.errors import UnauthorizedError, ForbiddenError
 from app.modules.user.models import UserModel
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_PREFIX}/auth/login", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_PREFIX}/auth/token", auto_error=False)
+
+
+class TokenBlocklist:
+    """
+    In-memory thread-safe revoked token storage with TTL-based expiration.
+    Guarantees true server-side invalidation upon logout.
+    """
+
+    def __init__(self):
+        self._revoked_tokens: Dict[str, float] = {}  # token_hash -> exp_timestamp
+        self._lock = threading.Lock()
+
+    def revoke(self, token: str, exp_timestamp: Optional[float] = None) -> None:
+        if not token:
+            return
+        if exp_timestamp is None:
+            # Default to 24h expiration
+            exp_timestamp = (
+                datetime.datetime.now(datetime.timezone.utc)
+                + datetime.timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            ).timestamp()
+
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        with self._lock:
+            self._revoked_tokens[token_hash] = exp_timestamp
+            self._prune()
+
+    def is_revoked(self, token: str) -> bool:
+        if not token:
+            return False
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        with self._lock:
+            return token_hash in self._revoked_tokens
+
+    def _prune(self) -> None:
+        now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+        self._revoked_tokens = {
+            k: exp for k, exp in self._revoked_tokens.items() if exp > now
+        }
+
+    def clear(self) -> None:
+        with self._lock:
+            self._revoked_tokens.clear()
+
+
+# Global singleton instance
+token_blocklist = TokenBlocklist()
 
 
 def hash_password(password: str) -> str:
@@ -52,7 +101,10 @@ def create_access_token(user_id: str, role: str = "user", expires_delta: Optiona
 
 
 def decode_access_token(token: str) -> dict:
-    """Decodes and validates JWT access token."""
+    """Decodes and validates JWT access token with revocation checking."""
+    if token_blocklist.is_revoked(token):
+        raise UnauthorizedError("Session has been revoked.", code="SESSION_REVOKED")
+
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
         return payload
@@ -73,7 +125,7 @@ def get_current_user(
     1. HttpOnly 'auth_token' cookie
     2. 'Authorization: Bearer <token>' header
     """
-    token = request.cookies.get("auth_token") or header_token
+    token = header_token or request.cookies.get("auth_token")
 
     if token:
         payload = decode_access_token(token)
@@ -86,8 +138,8 @@ def get_current_user(
             raise UnauthorizedError("User account not found or inactive.", code="ACCOUNT_DISABLED")
         return user
 
-    # Development mode fallback to demo user for local test convenience
-    if settings.APP_ENV == "development":
+    # Strict development fallback only if explicitly enabled
+    if settings.APP_ENV == "development" and getattr(settings, "ALLOW_DEV_AUTH_BYPASS", False):
         demo_user = db.query(UserModel).filter(UserModel.id == "usr_demo").first()
         if demo_user:
             return demo_user

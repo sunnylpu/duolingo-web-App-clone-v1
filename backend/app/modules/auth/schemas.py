@@ -17,7 +17,15 @@ class LoginRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     user: UserResponse
+    status: str = "authenticated"
+    message: str = "Authentication successful"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    expires_in_minutes: int
 
     model_config = ConfigDict(from_attributes=True)

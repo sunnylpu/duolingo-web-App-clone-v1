@@ -18,7 +18,7 @@ from app.modules.lesson.schemas import (
     LessonCompleteResponse,
 )
 from app.modules.user.models import UserModel
-from app.shared.errors import NotFoundError, ValidationError, ConflictError
+from app.shared.errors import NotFoundError, ValidationError, ConflictError, ForbiddenError
 
 
 class LessonService:
@@ -103,7 +103,7 @@ class LessonService:
             raise NotFoundError(f"Lesson attempt '{attempt_id}' was not found.")
 
         if attempt.user_id != current_user.id:
-            raise ValidationError("Lesson attempt belongs to another user.")
+            raise ForbiddenError("Lesson attempt belongs to another user.")
 
         if attempt.lesson_id != lesson_id:
             raise ValidationError(
@@ -193,7 +193,7 @@ class LessonService:
             raise NotFoundError(f"Lesson attempt '{attempt_id}' was not found.")
 
         if attempt.user_id != current_user.id:
-            raise ValidationError("Lesson attempt belongs to another user.")
+            raise ForbiddenError("Lesson attempt belongs to another user.")
         if attempt.lesson_id != lesson_id:
             raise ValidationError(
                 f"Lesson attempt '{attempt_id}' is not for lesson '{lesson_id}'."

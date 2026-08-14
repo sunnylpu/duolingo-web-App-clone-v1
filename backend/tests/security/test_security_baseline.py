@@ -1,8 +1,16 @@
+"""
+Security baseline tests — verifies that auth-protected endpoints behave correctly,
+injection payloads are rejected, and security headers are present.
+
+Updated for Phase 36: all lesson API calls require authentication.
+"""
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.orm import Session
 from seed.seed import seed_database
 from app.modules.gamification.service import GamificationService
+from app.shared.security import create_access_token
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +33,7 @@ async def test_security_headers_present(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_server_side_authorization_locked_lesson_rejection(client: AsyncClient):
     # Attempting to start locked lesson lsn_food_1 -> HTTP 409 SKILL_LOCKED
+    # client already carries usr_demo Bearer token (from conftest)
     res = await client.post("/api/v1/lessons/lsn_food_1/start")
     assert res.status_code == 409
     assert res.json()["error"]["code"] == "SKILL_LOCKED"
@@ -33,6 +42,7 @@ async def test_server_side_authorization_locked_lesson_rejection(client: AsyncCl
 @pytest.mark.asyncio
 async def test_input_validation_malformed_answer_rejection(client: AsyncClient):
     start_res = await client.post("/api/v1/lessons/lsn_greetings_1/start")
+    assert start_res.status_code == 200
     attempt_id = start_res.json()["attempt_id"]
 
     # Invalid exercise ID -> HTTP 404
@@ -64,6 +74,7 @@ async def test_sql_injection_payload_resilience(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_xss_script_string_safety(client: AsyncClient):
     start_res = await client.post("/api/v1/lessons/lsn_greetings_1/start")
+    assert start_res.status_code == 200
     attempt_id = start_res.json()["attempt_id"]
 
     xss_payload = "<script>alert('XSS')</script>"

@@ -46,6 +46,10 @@ class RateLimiter:
         with self._lock:
             self._records.pop(key, None)
 
+    def clear(self) -> None:
+        with self._lock:
+            self._records.clear()
+
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()

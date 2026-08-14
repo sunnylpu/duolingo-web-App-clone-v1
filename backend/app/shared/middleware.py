@@ -2,7 +2,9 @@ import time
 import uuid
 import json
 import logging
+from urllib.parse import urlparse
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
@@ -76,8 +78,63 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+    """
+    CSRF defense for cookie-authenticated state-changing operations.
+    Validates Origin/Referer and X-Requested-With headers when session cookie is used.
+    """
+
+    EXEMPT_PATHS = {
+        f"{settings.API_PREFIX}/auth/login",
+        f"{settings.API_PREFIX}/auth/register",
+        f"{settings.API_PREFIX}/auth/token",
+    }
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            # Only enforce if request relies on cookie authentication
+            has_cookie_session = bool(request.cookies.get("auth_token"))
+            has_bearer_auth = bool(request.headers.get("authorization"))
+
+            if has_cookie_session and not has_bearer_auth and request.url.path not in self.EXEMPT_PATHS:
+                origin = request.headers.get("origin")
+                referer = request.headers.get("referer")
+                req_with = request.headers.get("x-requested-with")
+                sec_site = request.headers.get("sec-fetch-site")
+
+                # Allowed if custom header is present (browser AJAX) or same-origin/site
+                is_safe_ajax = req_with == "XMLHttpRequest" or sec_site in {"same-origin", "same-site"}
+
+                is_valid_origin = False
+                if origin:
+                    is_valid_origin = any(
+                        origin.startswith(allowed.rstrip("/"))
+                        for allowed in settings.cors_origins_list
+                    )
+                elif referer:
+                    ref_host = urlparse(referer).netloc
+                    is_valid_origin = any(
+                        ref_host in allowed
+                        for allowed in settings.cors_origins_list
+                    )
+
+                # Reject if neither safe origin nor AJAX header is verified
+                if not (is_safe_ajax or is_valid_origin):
+                    return JSONResponse(
+                        status_code=403,
+                        content={
+                            "error": {
+                                "code": "CSRF_REJECTED",
+                                "message": "Cross-site request forgery protection rejected this request.",
+                            }
+                        },
+                    )
+
+        return await call_next(request)
+
+
 def setup_middleware(app: FastAPI) -> None:
-    """Configure CORS, request logging, and security headers middlewares on FastAPI application."""
+    """Configure CORS, request logging, security headers, and CSRF middlewares on FastAPI application."""
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -87,3 +144,4 @@ def setup_middleware(app: FastAPI) -> None:
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(CSRFProtectionMiddleware)

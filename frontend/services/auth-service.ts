@@ -15,8 +15,14 @@ export interface LoginPayload {
 
 export interface AuthResponse {
   user: User;
+  status: string;
+  message?: string;
+}
+
+export interface TokenResponse {
   access_token: string;
   token_type: string;
+  expires_in_minutes: number;
 }
 
 export const authService = {

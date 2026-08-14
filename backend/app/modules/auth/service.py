@@ -1,4 +1,5 @@
 import uuid
+from typing import Tuple
 from sqlalchemy.orm import Session
 from app.modules.user.models import UserModel
 from app.modules.gamification.models import UserStatsModel
@@ -6,8 +7,7 @@ from app.modules.notifications.models import NotificationPreferenceModel
 from app.shared.security import hash_password, verify_password, create_access_token
 from app.shared.errors import ValidationError, UnauthorizedError
 from app.shared.rate_limit import rate_limiter
-from app.modules.auth.schemas import RegisterRequest, LoginRequest, AuthResponse
-from app.modules.user.schemas import UserResponse
+from app.modules.auth.schemas import RegisterRequest, LoginRequest
 
 
 class AuthService:
@@ -16,7 +16,7 @@ class AuthService:
     def __init__(self, db: Session):
         self.db = db
 
-    def register(self, req: RegisterRequest) -> AuthResponse:
+    def register(self, req: RegisterRequest) -> Tuple[UserModel, str]:
         # Check duplicate email or username
         existing_email = self.db.query(UserModel).filter(UserModel.email == req.email).first()
         if existing_email:
@@ -70,9 +70,9 @@ class AuthService:
         self.db.refresh(user)
 
         access_token = create_access_token(user.id, role=user.role)
-        return AuthResponse(user=UserResponse.model_validate(user), access_token=access_token)
+        return user, access_token
 
-    def login(self, req: LoginRequest, client_ip: str = "127.0.0.1") -> AuthResponse:
+    def login(self, req: LoginRequest, client_ip: str = "127.0.0.1") -> Tuple[UserModel, str]:
         # Rate limit login abuse per IP
         rate_limiter.check(f"login_{client_ip}", limit=10, window_seconds=60)
 
@@ -93,4 +93,4 @@ class AuthService:
             raise UnauthorizedError("Account has been disabled.", code="ACCOUNT_DISABLED")
 
         access_token = create_access_token(user.id, role=user.role)
-        return AuthResponse(user=UserResponse.model_validate(user), access_token=access_token)
+        return user, access_token
