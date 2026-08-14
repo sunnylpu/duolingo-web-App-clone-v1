@@ -17,6 +17,7 @@ import {
   HomeSkeleton,
 } from "@/features/home";
 import { ReviewCard } from "@/features/review";
+import { DailyQuestList, WeeklyChallengeCard, useQuests } from "@/features/quests";
 
 function LearnPageContent() {
   const router = useRouter();
@@ -28,6 +29,8 @@ function LearnPageContent() {
   const [homeData, setHomeData] = useState<HomeDashboardResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { dailyData, weeklyData, loading: questsLoading } = useQuests();
 
   const loadData = async () => {
     setLoading(true);
@@ -98,7 +101,17 @@ function LearnPageContent() {
         </div>
       )}
 
-      {/* 3. Smart Review Card */}
+      {/* 3. Daily Quests & Weekly Challenge Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2">
+          <DailyQuestList data={dailyData} loading={questsLoading} />
+        </div>
+        <div>
+          <WeeklyChallengeCard data={weeklyData} loading={questsLoading} />
+        </div>
+      </div>
+
+      {/* 4. Smart Review Card */}
       {homeData?.smart_review && homeData.smart_review.available && (
         <ReviewCard
           count={homeData.smart_review.count}
@@ -111,7 +124,7 @@ function LearnPageContent() {
         />
       )}
 
-      {/* 4. Course Hub Selector */}
+      {/* 5. Course Hub Selector */}
       {homeData?.courses && homeData.courses.length > 0 && (
         <CourseHub
           courses={homeData.courses}
@@ -120,7 +133,7 @@ function LearnPageContent() {
         />
       )}
 
-      {/* 5. Quick Actions Shortcut Bar */}
+      {/* 6. Quick Actions Shortcut Bar */}
       <div className="flex items-center justify-between gap-3 p-3 bg-[#182830] border-2 border-[#37464f] rounded-2xl">
         <span className="text-xs font-black uppercase text-gray-400 tracking-wider">
           Quick Navigation
@@ -152,7 +165,7 @@ function LearnPageContent() {
         </div>
       </div>
 
-      {/* 6. Interactive Vertical Learning Path */}
+      {/* 7. Interactive Vertical Learning Path */}
       <div className="pt-2">
         <h2 className="text-lg font-black text-white uppercase tracking-wider mb-4 flex items-center gap-2">
           <span>🗺️</span>

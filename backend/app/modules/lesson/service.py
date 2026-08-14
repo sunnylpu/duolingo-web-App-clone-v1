@@ -156,6 +156,14 @@ class LessonService:
                 hearts_lost=hearts_lost,
             )
 
+            # Record Quest Event for Correct Answers
+            if is_correct:
+                try:
+                    from app.modules.quests.service import QuestService
+                    QuestService(self.db).record_quest_event(current_user.id, "CORRECT_ANSWERS", 1)
+                except Exception:
+                    pass
+
             self.db.commit()
 
             return AnswerSubmissionResponse(
@@ -207,7 +215,6 @@ class LessonService:
                 "lessons_completed": 1,
             }
 
-        # Idempotency check for repeat completion requests
         if attempt.status == "completed":
             sp_data = get_skill_progress_data(lesson.skill_id)
             return LessonCompleteResponse(
@@ -268,7 +275,6 @@ class LessonService:
                 activity_date_override=today_date,
             )
 
-            # Update Skill Progress
             skill_id = lesson.skill_id
             skill_lessons = self.repository.get_lessons_by_skill(skill_id)
             skill_lesson_ids = {l.id for l in skill_lessons}
@@ -304,7 +310,17 @@ class LessonService:
                 commit=False,
             )
 
-            # ── Unit & Course completion evaluation ───────────────────────
+            # Record Quest Events for Lesson Completion, XP Earned, and Skill Completion
+            try:
+                from app.modules.quests.service import QuestService
+                quest_svc = QuestService(self.db)
+                quest_svc.record_quest_event(current_user.id, "LESSONS_COMPLETED", 1)
+                quest_svc.record_quest_event(current_user.id, "XP_EARNED", lesson.xp_reward)
+                if skill_status == "completed":
+                    quest_svc.record_quest_event(current_user.id, "SKILLS_COMPLETED", 1)
+            except Exception:
+                pass
+
             unit_bonus_xp = 0
             course_bonus_xp = 0
             unit_completed = False
@@ -357,7 +373,6 @@ class LessonService:
                         "completion_percent": 100.0,
                     }
 
-                    # Check overall course completion
                     if course:
                         path_eval = progress_service.get_learning_path(current_user, course_id=course.id)
                         if path_eval.course.completed_units == path_eval.course.total_units and path_eval.course.total_units > 0:
@@ -373,7 +388,6 @@ class LessonService:
                                 "completion_percent": 100.0,
                             }
 
-            # Evaluate achievements
             newly_earned_achs = self.gamification_service.evaluate_achievements(
                 user_id=current_user.id, commit=False
             )

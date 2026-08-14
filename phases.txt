@@ -3786,3 +3786,1094 @@ Hour 21 → AWS production deployment
 ```
 
 That gives the last six hours a very clear **DevOps-to-production trajectory**, which is much more valuable for this project than continuing to add increasingly minor UI features.
+
+
+
+
+
+# Phase 34 — Final Architecture Review + Production Readiness Freeze
+
+**Hour 16 of the remaining roadmap**
+
+This is the point where we **stop adding product features**.
+
+You have now built enough functionality that another new feature can actually become a liability if the underlying system is not clean enough for:
+
+```text
+Docker
+→ Jenkins
+→ Kubernetes
+→ AWS
+```
+
+So Hour 16 is a **production-readiness freeze and architecture review**.
+
+The objective is to take everything built in Hours 1–15 and establish:
+
+```text
+Codebase
+   ↓
+Architecture review
+   ↓
+Dependency graph review
+   ↓
+Data integrity
+   ↓
+API consistency
+   ↓
+Deployment contracts
+   ↓
+Release candidate
+```
+
+---
+
+# Phase 34 objectives
+
+This hour should answer one question:
+
+> **Can we freeze the application now and confidently package the same code into Docker, CI/CD, Kubernetes, and AWS?**
+
+We should finish with:
+
+```text
+✅ architecture frozen
+✅ module boundaries documented
+✅ API inventory frozen
+✅ database schema reviewed
+✅ seed process verified
+✅ environment contract defined
+✅ health/readiness verified
+✅ test commands standardized
+✅ production startup command verified
+✅ release checklist created
+✅ no unnecessary features remaining
+```
+
+---
+
+# 1. Freeze the architecture
+
+Do **not** redesign the existing architecture.
+
+Your current backend structure should remain close to:
+
+```text
+backend/
+└── app/
+    ├── main.py
+    ├── config.py
+    │
+    ├── shared/
+    │   ├── database.py
+    │   ├── errors.py
+    │   ├── middleware.py
+    │   ├── logging.py
+    │   ├── metrics.py
+    │   ├── audit.py
+    │   └── security.py
+    │
+    └── modules/
+        ├── user/
+        ├── course/
+        ├── lesson/
+        ├── progress/
+        ├── gamification/
+        ├── leaderboard/
+        ├── social/
+        ├── notifications/
+        ├── quests/
+        └── ...
+```
+
+The exact modules depend on what your agent actually created.
+
+The important rule:
+
+> **No new domain should be introduced just because we can.**
+
+---
+
+# 2. Architecture dependency audit
+
+Have the agent inspect imports.
+
+We want:
+
+```text
+router
+ ↓
+service
+ ↓
+repository
+ ↓
+database
+```
+
+and:
+
+```text
+service → other domain service
+```
+
+where cross-domain behavior is genuinely required.
+
+Avoid:
+
+```text
+router → repository directly
+router → database directly
+repository → frontend
+service → router
+```
+
+---
+
+# 3. Circular dependency check
+
+Run a source/import audit.
+
+Look for:
+
+```text
+user → progress → gamification → user
+```
+
+or similar cycles.
+
+If circular dependencies already exist, resolve them before deployment.
+
+A clean service graph matters because Kubernetes will make runtime failures less forgiving.
+
+---
+
+# 4. Shared-layer discipline
+
+Review:
+
+```text id="2k0xv7"
+shared/
+```
+
+Only put truly cross-cutting concerns there:
+
+```text
+database
+logging
+errors
+middleware
+metrics
+audit
+security
+configuration
+```
+
+Do not put:
+
+```text
+lesson logic
+XP logic
+course logic
+```
+
+into `shared`.
+
+---
+
+# 5. Domain ownership map
+
+Create:
+
+```text
+docs/domain-ownership.md
+```
+
+Define:
+
+```text
+User
+→ identity/profile
+
+Course
+→ curriculum structure
+
+Lesson
+→ lesson/session/exercise answering
+
+Progress
+→ skill/unit/course progression/mastery
+
+Gamification
+→ XP/hearts/streak/quests/achievements
+
+Leaderboard
+→ ranking
+
+Social
+→ follows/activity
+
+Notifications
+→ notifications/reminders
+```
+
+This is extremely useful during an evaluation interview.
+
+---
+
+# 6. Event ownership map
+
+Document:
+
+```text id="lk5r3n"
+LessonCompleted
+    ↓
+Progress
+    ↓
+Gamification
+    ↓
+Achievements
+    ↓
+Notifications
+    ↓
+Social Activity
+    ↓
+Audit
+```
+
+The system does not need Kafka yet.
+
+But the logical event ownership should be clear.
+
+This will make the eventual microservice evolution story very strong.
+
+---
+
+# 7. API inventory
+
+Create:
+
+```text
+docs/api-inventory.md
+```
+
+List every meaningful endpoint.
+
+Group by domain:
+
+```text
+User
+Course
+Lesson
+Progress
+Gamification
+Achievements
+Quests
+Leaderboard
+Social
+Notifications
+Search
+Vocabulary
+Health
+Metrics
+Admin
+```
+
+For every endpoint record:
+
+```text
+method
+route
+purpose
+request
+response
+error codes
+access level
+```
+
+---
+
+# 8. API duplication audit
+
+Search for overlapping endpoints.
+
+For example, avoid ending with:
+
+```text
+GET /progress
+GET /learning-progress
+GET /user-progress
+GET /course-progress
+```
+
+when one is simply duplicating another.
+
+Some specialized endpoints are fine, but every endpoint should have a clear purpose.
+
+---
+
+# 9. API response consistency
+
+Standardize:
+
+```json
+{
+  "data": {},
+  "meta": {}
+}
+```
+
+or whatever response convention your existing application uses.
+
+Do not rewrite every endpoint unnecessarily just to force a new wrapper.
+
+The important thing is:
+
+```text
+same domain → same response conventions
+same error → same error structure
+```
+
+---
+
+# 10. Error contract freeze
+
+Your error structure should now be frozen.
+
+Example:
+
+```json
+{
+  "error": {
+    "code": "SKILL_LOCKED",
+    "message": "Complete the prerequisite skill first."
+  }
+}
+```
+
+Document the final error codes.
+
+At minimum:
+
+```text
+RESOURCE_NOT_FOUND
+VALIDATION_ERROR
+SKILL_LOCKED
+OUT_OF_HEARTS
+LESSON_NOT_COMPLETE
+LESSON_ATTEMPT_NOT_ACTIVE
+DUPLICATE_SUBMISSION
+HEARTS_FULL
+PRACTICE_COOLDOWN
+INTERNAL_ERROR
+```
+
+Only include codes that actually exist in the repository.
+
+---
+
+# 11. Database schema review
+
+Review all models.
+
+Confirm:
+
+```text
+foreign keys
+unique constraints
+indexes
+nullable fields
+cascade rules
+timestamps
+```
+
+Especially inspect:
+
+```text
+User
+UserStats
+Course
+Unit
+Skill
+Lesson
+Exercise
+SkillProgress
+LessonAttempt
+ExerciseAttempt
+DailyActivity
+Achievement
+UserAchievement
+UnitMilestone
+CourseMilestone
+Quest
+UserQuest
+Notification
+Follow
+ActivityEvent
+AuditEvent
+```
+
+Use the actual repository models; don't add tables just because they appear in the plan.
+
+---
+
+# 12. Referential integrity test
+
+Deliberately test invalid relationships.
+
+Examples:
+
+```text
+Skill → invalid prerequisite
+Lesson → invalid skill
+Exercise → invalid lesson
+SkillProgress → invalid skill
+LessonAttempt → invalid lesson
+```
+
+These should fail safely.
+
+This catches schema problems before containerization.
+
+---
+
+# 13. Idempotency audit
+
+Create a table/checklist for every mutation.
+
+| Mutation          | Retry safe? |
+| ----------------- | ----------- |
+| Start lesson      | ✅           |
+| Submit answer     | ✅           |
+| Complete lesson   | ✅           |
+| Practice recovery | ✅           |
+| Heart refill      | ✅           |
+| Follow            | ✅           |
+| Quest completion  | ✅           |
+| Unit reward       | ✅           |
+| Course reward     | ✅           |
+| Achievement award | ✅           |
+| Notification read | ✅           |
+
+If any are not safe, fix them before Phase 35.
+
+---
+
+# 14. Seed architecture freeze
+
+Your seed architecture is now one of the strongest parts of the project.
+
+Freeze:
+
+```text
+catalog
+→ generator
+→ seed
+→ verify
+```
+
+Make sure:
+
+```text
+python -m seed.seed
+```
+
+is enough to initialize a clean database.
+
+And:
+
+```text
+python -m seed.verify
+```
+
+provides a deterministic verification result.
+
+---
+
+# 15. Seed counts snapshot
+
+The release candidate should document the final expected dataset.
+
+Based on the architecture we have been building, verify the **actual repository values** and record them.
+
+Expected direction:
+
+```text
+🇬🇧 English
+8 units
+32 skills
+96 lessons
+576 exercises
+
+🇪🇸 Spanish
+5 units
+20 skills
+60 lessons
+~360 exercises
+
+🇫🇷 French
+3 units
+12 skills
+36 lessons
+~216 exercises
+```
+
+Don't blindly document these numbers if the repository differs. Use the actual seeded output.
+
+---
+
+# 16. Production startup contract
+
+Determine the exact backend production command.
+
+For example:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Frontend:
+
+```bash
+npm run build
+npm run start
+```
+
+Record these in:
+
+```text
+docs/runtime.md
+```
+
+---
+
+# 17. Environment contract
+
+Create:
+
+```text
+docs/environment.md
+```
+
+Document every required environment variable.
+
+Example:
+
+```text
+APP_ENV
+APP_VERSION
+DEBUG
+DATABASE_URL
+CORS_ORIGINS
+APP_TIMEZONE
+
+MAX_HEARTS
+HEART_REGEN_MINUTES
+PRACTICE_RECOVERY_COOLDOWN_MINUTES
+
+SLOW_REQUEST_THRESHOLD_MS
+NEXT_PUBLIC_API_URL
+```
+
+Again, only document variables that actually exist.
+
+---
+
+# 18. Development vs production matrix
+
+Create:
+
+```text
+Development
+Test
+Production
+```
+
+and define differences.
+
+Example:
+
+| Setting | Development | Test        | Production        |
+| ------- | ----------- | ----------- | ----------------- |
+| DEBUG   | true        | false       | false             |
+| DB      | SQLite      | test SQLite | deployment config |
+| CORS    | localhost   | test origin | production domain |
+| Logging | readable    | concise     | structured        |
+| Seed    | yes         | fixture     | controlled        |
+
+This will become extremely useful for Docker/Jenkins.
+
+---
+
+# 19. Health contract
+
+Freeze:
+
+```text
+/health
+/health/live
+/health/ready
+```
+
+Document what each means.
+
+Especially:
+
+```text
+live
+→ process exists
+
+ready
+→ process can serve traffic
+```
+
+Kubernetes will use these directly.
+
+---
+
+# 20. Metrics contract
+
+Freeze:
+
+```text
+/metrics
+```
+
+Document the business metrics the application exposes.
+
+For example:
+
+```text
+requests_total
+request_errors_total
+lesson_completions_total
+exercise_answers_total
+exercise_correct_total
+xp_awarded_total
+achievements_unlocked_total
+quests_completed_total
+```
+
+Only record metrics that actually exist.
+
+---
+
+# 21. Logging contract
+
+Document required fields:
+
+```text
+timestamp
+level
+request_id
+method
+path
+status
+duration
+service
+```
+
+And clearly state:
+
+```text
+no secrets
+no passwords
+no authorization headers
+```
+
+---
+
+# 22. Graceful shutdown validation
+
+Start the backend, then terminate it gracefully.
+
+Verify:
+
+```text
+database closes correctly
+process exits
+no corrupted database state
+```
+
+This matters directly in Kubernetes.
+
+---
+
+# 23. Startup failure validation
+
+Test deliberately invalid configuration:
+
+```text
+missing DB URL
+invalid CORS
+bad environment value
+```
+
+The application should fail with a useful startup error instead of:
+
+```text
+running incorrectly
+```
+
+---
+
+# 24. Frontend runtime audit
+
+Check every `NEXT_PUBLIC_*` variable.
+
+Remember:
+
+> Anything exposed through `NEXT_PUBLIC_*` is visible to the browser.
+
+Therefore only public configuration belongs there.
+
+---
+
+# 25. Bundle audit
+
+Run:
+
+```bash
+npm run build
+```
+
+and inspect:
+
+```text
+page sizes
+First Load JS
+large client components
+```
+
+Do not chase tiny improvements.
+
+Look for obvious heavy bundles caused by unnecessary dependencies.
+
+---
+
+# 26. Backend test command freeze
+
+Create one canonical command:
+
+```bash
+pytest -v
+```
+
+and one coverage command:
+
+```bash
+pytest --cov=app --cov-report=term-missing
+```
+
+---
+
+# 27. Frontend test command freeze
+
+Define:
+
+```bash
+npm run lint
+npm run test
+npm run build
+npm run test:e2e
+```
+
+Use whatever scripts actually exist.
+
+Don't force nonexistent tools just for the documentation.
+
+---
+
+# 28. Full release command
+
+Create:
+
+```bash
+./scripts/release-check.sh
+```
+
+Conceptually:
+
+```text
+1. backend tests
+2. frontend tests
+3. lint
+4. build
+5. seed verification
+6. health smoke test
+7. E2E
+```
+
+If E2E requires services running separately, document that instead of hiding complexity.
+
+This script will later become the core Jenkins job.
+
+---
+
+# 29. Release checklist
+
+Create:
+
+```text
+docs/release-checklist.md
+```
+
+Include:
+
+```text
+[ ] Tests pass
+[ ] Build passes
+[ ] Seed verifies
+[ ] Environment documented
+[ ] Health works
+[ ] Metrics works
+[ ] Security checks pass
+[ ] No secrets
+[ ] API inventory updated
+[ ] Database reviewed
+[ ] Git working tree clean
+[ ] Release version assigned
+```
+
+---
+
+# 30. Git release tag
+
+When everything passes:
+
+```text
+v1.0.0-rc1
+```
+
+Do not tag it until the whole repository is clean and verified.
+
+This release candidate becomes:
+
+```text
+Phase 18 Docker input
+```
+
+and ultimately your production image source.
+
+---
+
+# 31. Clean working tree
+
+Before finishing the hour:
+
+```bash
+git status
+```
+
+must ideally show:
+
+```text
+working tree clean
+```
+
+No:
+
+```text
+.env
+logs
+database files
+node_modules
+.pytest_cache
+```
+
+should accidentally be committed.
+
+---
+
+# 32. `.gitignore` audit
+
+Verify:
+
+```text
+.env*
+!.env.example
+node_modules/
+.next/
+__pycache__/
+.pytest_cache/
+*.db
+logs/
+coverage/
+playwright-report/
+```
+
+Adjust based on your actual project.
+
+---
+
+# 33. README freeze
+
+README should now document:
+
+```text
+What the application is
+Features
+Tech stack
+Architecture
+Course structure
+Database
+API
+Running locally
+Testing
+Environment variables
+Production notes
+```
+
+The README should no longer describe the app as a tiny MVP if the repository now contains the expanded curriculum and major systems.
+
+---
+
+# 34. Architecture diagram
+
+Add:
+
+```text
+docs/architecture.md
+```
+
+with:
+
+```text
+                   Next.js
+                      │
+                  REST API
+                      │
+                   FastAPI
+                      │
+        ┌─────────────┼─────────────┐
+        ▼             ▼             ▼
+     Course        Lesson        Progress
+        │             │             │
+        └─────────────┼─────────────┘
+                      ▼
+                 Gamification
+                      │
+       ┌──────────────┼──────────────┐
+       ▼              ▼              ▼
+   Leaderboard      Social       Notifications
+```
+
+Then show:
+
+```text
+Shared:
+DB
+Logging
+Metrics
+Audit
+Security
+```
+
+---
+
+# 35. Future deployment architecture document
+
+Add:
+
+```text
+docs/deployment-architecture.md
+```
+
+State the intended path:
+
+```text
+GitHub
+   ↓
+Jenkins
+   ↓
+Docker image
+   ↓
+Container registry
+   ↓
+Kubernetes
+   ↓
+AWS
+```
+
+And:
+
+```text
+Kubernetes
+├── frontend
+├── backend
+└── supporting services later
+```
+
+Don't implement it yet.
+
+---
+
+# 36. Phase 34 acceptance criteria
+
+```text
+[ ] Architecture dependency graph audited
+[ ] Circular dependencies reviewed
+[ ] Domain ownership documented
+[ ] Event ownership documented
+[ ] API inventory created
+[ ] API duplication reviewed
+[ ] Error contract frozen
+[ ] Database schema reviewed
+[ ] Referential integrity tested
+[ ] Idempotency audit completed
+[ ] Seed process frozen
+[ ] Final seed counts verified
+[ ] Backend production command documented
+[ ] Frontend production command documented
+[ ] Environment contract documented
+[ ] Dev/test/prod configuration matrix created
+[ ] Health endpoints documented
+[ ] Metrics contract documented
+[ ] Logging contract documented
+[ ] Graceful shutdown tested
+[ ] Startup failure handling tested
+[ ] Frontend environment variables audited
+[ ] Production build verified
+[ ] Canonical backend test command exists
+[ ] Canonical frontend test commands exist
+[ ] release-check.sh exists
+[ ] release checklist exists
+[ ] README updated
+[ ] Architecture documentation updated
+[ ] Deployment architecture documented
+[ ] .gitignore audited
+[ ] Git working tree clean
+[ ] v1.0.0-rc1 prepared
+```
+
+---
+
+# What Phase 34 does NOT implement
+
+```text
+❌ Docker
+❌ Jenkins
+❌ Kubernetes
+❌ AWS
+❌ PostgreSQL migration
+❌ Redis
+❌ Full authentication
+❌ New product features
+```
+
+## After Hour 16
+
+The project should be **feature-frozen**.
+
+The remaining five hours are now purely deployment/operations:
+
+```text
+Hour 16 ✅ Final architecture + release freeze
+
+Hour 17 → Docker
+Hour 18 → Jenkins CI/CD
+Hour 19 → Kubernetes
+Hour 20 → Kubernetes production hardening
+Hour 21 → AWS deployment
+```
+
+At this point, that's a much better use of the remaining time than adding another cosmetic feature.
