@@ -1,6 +1,6 @@
 import os
 from typing import Generator
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, text, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 from app.config import settings
 
@@ -23,6 +23,15 @@ if settings.DATABASE_URL.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
 engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
+
+
+# Enforce SQLite foreign key integrity constraints
+if settings.DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -64,6 +73,14 @@ def init_db(target_engine=None) -> None:
     from app.shared.audit_models import AuditEventModel  # noqa: F401
 
     exec_engine = target_engine if target_engine is not None else engine
+
+    if exec_engine != engine and settings.DATABASE_URL.startswith("sqlite"):
+        @event.listens_for(exec_engine, "connect")
+        def set_target_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     Base.metadata.create_all(bind=exec_engine)
 
     # Safe lightweight schema migration for newly added columns
@@ -80,7 +97,7 @@ def init_db(target_engine=None) -> None:
                     conn.execute(text("ALTER TABLE achievements ADD COLUMN rarity VARCHAR DEFAULT 'common'"))
                 if "xp_reward" not in columns:
                     conn.execute(text("ALTER TABLE achievements ADD COLUMN xp_reward INTEGER DEFAULT 0"))
-    except Exception as e:
+    except Exception:
         pass
 
 

@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -16,18 +16,29 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @pytest.fixture(scope="function")
 def db_session():
+    # Disable foreign keys temporarily during drop_all to allow clean tear down
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
+    session.execute(text("PRAGMA foreign_keys=ON"))
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        with engine.connect() as conn:
+            conn.execute(text("PRAGMA foreign_keys=OFF"))
+            Base.metadata.drop_all(bind=conn)
 
 
 @pytest_asyncio.fixture(scope="function")

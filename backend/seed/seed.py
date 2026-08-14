@@ -57,24 +57,7 @@ def seed_database(db: Session) -> dict:
         "activity_events": 0,
     }
 
-    # 1. Seed Achievements (~29 achievements)
-    for ach in ACHIEVEMENTS:
-        gamification_repo.create_achievement(
-            achievement_id=ach["id"],
-            code=ach["code"],
-            name=ach["name"],
-            description=ach["description"],
-            icon=ach["icon"],
-            requirement_type=ach["requirement_type"],
-            requirement_value=ach["requirement_value"],
-            category=ach.get("category", "learning"),
-            course_id=ach.get("course_id"),
-            rarity=ach.get("rarity", "common"),
-            xp_reward=ach.get("xp_reward", 0),
-        )
-        counts["achievements"] += 1
-
-    # 2. Seed Courses (English flagship + Spanish expanded + French secondary)
+    # 1. Seed Courses (English flagship + Spanish expanded + French secondary)
     courses_to_seed = [generate_course(spec) for spec in ALL_COURSE_SPECS]
 
     for c_data in courses_to_seed:
@@ -134,6 +117,23 @@ def seed_database(db: Session) -> dict:
                             xp_reward=ex_data["xp_reward"],
                         )
                         counts["exercises"] += 1
+
+    # 2. Seed Achievements (~29 achievements, foreign keys refer to courses)
+    for ach in ACHIEVEMENTS:
+        gamification_repo.create_achievement(
+            achievement_id=ach["id"],
+            code=ach["code"],
+            name=ach["name"],
+            description=ach["description"],
+            icon=ach["icon"],
+            requirement_type=ach["requirement_type"],
+            requirement_value=ach["requirement_value"],
+            category=ach.get("category", "learning"),
+            course_id=ach.get("course_id"),
+            rarity=ach.get("rarity", "common"),
+            xp_reward=ach.get("xp_reward", 0),
+        )
+        counts["achievements"] += 1
 
     # 3. Seed Demo Learner User & UserStats
     user_repo.create_or_update_user(
