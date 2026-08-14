@@ -17,6 +17,7 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: str
+    role: str = "user"
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)

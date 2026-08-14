@@ -86,7 +86,8 @@ def init_db(target_engine=None) -> None:
     # Safe lightweight schema migration for newly added columns
     try:
         inspector = inspect(exec_engine)
-        if "achievements" in inspector.get_table_names():
+        tables = inspector.get_table_names()
+        if "achievements" in tables:
             columns = {c["name"] for c in inspector.get_columns("achievements")}
             with exec_engine.begin() as conn:
                 if "category" not in columns:
@@ -97,6 +98,14 @@ def init_db(target_engine=None) -> None:
                     conn.execute(text("ALTER TABLE achievements ADD COLUMN rarity VARCHAR DEFAULT 'common'"))
                 if "xp_reward" not in columns:
                     conn.execute(text("ALTER TABLE achievements ADD COLUMN xp_reward INTEGER DEFAULT 0"))
+
+        if "users" in tables:
+            user_columns = {c["name"] for c in inspector.get_columns("users")}
+            with exec_engine.begin() as conn:
+                if "password_hash" not in user_columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+                if "role" not in user_columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(32) DEFAULT 'user'"))
     except Exception:
         pass
 

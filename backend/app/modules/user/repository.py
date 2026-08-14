@@ -26,6 +26,8 @@ class UserRepository:
         email: str,
         avatar: Optional[str] = None,
         is_active: bool = True,
+        password_hash: Optional[str] = None,
+        role: str = "user",
     ) -> UserModel:
         user = self.get_by_id(user_id) or self.get_by_username(username) or self.get_by_email(email)
         if not user:
@@ -36,6 +38,8 @@ class UserRepository:
                 email=email,
                 avatar=avatar,
                 is_active=is_active,
+                password_hash=password_hash,
+                role=role,
             )
             self.db.add(user)
         else:
@@ -44,6 +48,9 @@ class UserRepository:
             user.email = email
             user.avatar = avatar
             user.is_active = is_active
+            if password_hash:
+                user.password_hash = password_hash
+            user.role = role
 
         self.db.commit()
         self.db.refresh(user)

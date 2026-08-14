@@ -19,6 +19,7 @@ from seed.catalogs import ALL_COURSE_SPECS
 from seed.achievement_data import ACHIEVEMENTS
 from seed.user_data import (
     DEMO_USER,
+    ADMIN_USER,
     DEMO_USER_STATS,
     LEADERBOARD_USERS,
     DEMO_SKILL_PROGRESSIONS,
@@ -142,6 +143,20 @@ def seed_database(db: Session) -> dict:
         display_name=DEMO_USER["display_name"],
         email=DEMO_USER["email"],
         avatar=DEMO_USER["avatar"],
+        password_hash=DEMO_USER["password_hash"],
+        role=DEMO_USER["role"],
+    )
+    counts["users"] += 1
+
+    # Seed Admin User
+    user_repo.create_or_update_user(
+        user_id=ADMIN_USER["id"],
+        username=ADMIN_USER["username"],
+        display_name=ADMIN_USER["display_name"],
+        email=ADMIN_USER["email"],
+        avatar=ADMIN_USER["avatar"],
+        password_hash=ADMIN_USER["password_hash"],
+        role=ADMIN_USER["role"],
     )
     counts["users"] += 1
 
@@ -215,6 +230,8 @@ def seed_database(db: Session) -> dict:
             display_name=lb_usr["display_name"],
             email=lb_usr["email"],
             avatar=lb_usr["avatar"],
+            password_hash=lb_usr.get("password_hash"),
+            role=lb_usr.get("role", "user"),
         )
         counts["users"] += 1
 

@@ -1,11 +1,25 @@
 from datetime import date, timedelta
+from app.shared.security import hash_password
 
 DEMO_USER = {
     "id": "usr_demo",
     "username": "demolearner",
     "display_name": "Demo Learner",
     "email": "demo@duolingo.clone",
+    "password_hash": hash_password("demopassword123"),
+    "role": "user",
     "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=demolearner",
+    "is_active": True,
+}
+
+ADMIN_USER = {
+    "id": "usr_admin",
+    "username": "admin",
+    "display_name": "Admin User",
+    "email": "admin@duolingo.clone",
+    "password_hash": hash_password("adminpassword123"),
+    "role": "admin",
+    "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=admin",
     "is_active": True,
 }
 
@@ -27,6 +41,8 @@ LEADERBOARD_USERS = [
         "username": "polyglotpete",
         "display_name": "Polyglot Pete",
         "email": "pete@example.com",
+        "password_hash": hash_password("polyglotpete123"),
+        "role": "user",
         "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=polyglotpete",
         "xp": 340,
         "rank": 1,
@@ -36,6 +52,8 @@ LEADERBOARD_USERS = [
         "username": "languagelover",
         "display_name": "Language Lover",
         "email": "lover@example.com",
+        "password_hash": hash_password("languagelover123"),
+        "role": "user",
         "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=languagelover",
         "xp": 280,
         "rank": 2,
@@ -45,6 +63,8 @@ LEADERBOARD_USERS = [
         "username": "spanishpro",
         "display_name": "Spanish Pro",
         "email": "pro@example.com",
+        "password_hash": hash_password("spanishpro123"),
+        "role": "user",
         "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=spanishpro",
         "xp": 210,
         "rank": 3,

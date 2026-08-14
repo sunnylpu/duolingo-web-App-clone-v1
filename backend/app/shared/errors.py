@@ -52,20 +52,20 @@ class ValidationError(AppException):
 
 
 class UnauthorizedError(AppException):
-    def __init__(self, message: str = "Authentication required", details: Optional[Any] = None):
+    def __init__(self, message: str = "Authentication required", code: str = "UNAUTHORIZED", details: Optional[Any] = None):
         super().__init__(
             message=message,
-            code="UNAUTHORIZED",
+            code=code,
             status_code=status.HTTP_401_UNAUTHORIZED,
             details=details,
         )
 
 
 class ForbiddenError(AppException):
-    def __init__(self, message: str = "Permission denied", details: Optional[Any] = None):
+    def __init__(self, message: str = "Permission denied", code: str = "FORBIDDEN", details: Optional[Any] = None):
         super().__init__(
             message=message,
-            code="FORBIDDEN",
+            code=code,
             status_code=status.HTTP_403_FORBIDDEN,
             details=details,
         )
