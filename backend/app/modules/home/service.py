@@ -12,6 +12,7 @@ from app.modules.home.schemas import (
     HomeDailyGoalSummary,
     HomeStreakSummary,
     HomeHeartsSummary,
+    HomeReviewSummary,
 )
 
 MAX_HEARTS = 5
@@ -90,6 +91,16 @@ class HomeService:
             next_heart_refill_seconds=None,
         )
 
+        # Fetch smart review summary
+        review_data = self.progress_service.get_smart_review(
+            current_user=current_user, course_id=current_course.id
+        )
+        smart_review = HomeReviewSummary(
+            available=review_data.available,
+            count=review_data.count,
+            skills_count=len(review_data.skills),
+        )
+
         # Fetch all courses with progress
         courses = self.course_service.get_courses(current_user=current_user)
 
@@ -99,5 +110,6 @@ class HomeService:
             daily_goal=daily_goal,
             streak=streak,
             hearts=hearts,
+            smart_review=smart_review,
             courses=courses,
         )

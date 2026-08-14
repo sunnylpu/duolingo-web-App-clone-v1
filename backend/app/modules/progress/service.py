@@ -1,15 +1,29 @@
+import json
 from typing import List, Optional, Dict, Any, Set
 from sqlalchemy.orm import Session, joinedload
 from app.modules.progress.repository import ProgressRepository
 from app.modules.progress.models import (
     SkillProgressModel,
     LessonAttemptModel,
+    ExerciseAttemptModel,
     UnitMilestoneModel,
     CourseMilestoneModel,
 )
 from app.modules.course.models import CourseModel, UnitModel
-from app.modules.lesson.models import SkillModel, LessonModel
-from app.modules.progress.schemas import ProgressResponse, SkillProgressSummary
+from app.modules.lesson.models import SkillModel, LessonModel, ExerciseModel
+from app.modules.progress.difficulty import (
+    calculate_mastery_score,
+    calculate_mastery_state,
+    recommend_difficulty,
+)
+from app.modules.progress.schemas import (
+    ProgressResponse,
+    SkillProgressSummary,
+    SkillPerformanceResponse,
+    ReviewResponse,
+    ReviewSkillSummary,
+    ReviewExerciseDetail,
+)
 from app.modules.course.schemas import (
     PathResponse,
     CourseSummaryResponse,
@@ -142,7 +156,7 @@ class ProgressService:
         }
 
     # ──────────────────────────────────────────────────────────────
-    #  Public API — Milestones, Path & Course Summaries
+    #  Public API — Milestones, Path, Course Summaries & Performance
     # ──────────────────────────────────────────────────────────────
 
     def check_and_grant_unit_milestone(self, user_id: str, unit_id: str) -> Dict[str, Any]:
@@ -182,10 +196,6 @@ class ProgressService:
         }
 
     def check_and_grant_course_milestone(self, user_id: str, course_id: str) -> Dict[str, Any]:
-        """
-        Durable top-level course milestone reward check (+500 XP).
-        Guarantees idempotent award and evaluates course mastery achievement.
-        """
         existing = (
             self.db.query(CourseMilestoneModel)
             .filter(
@@ -213,7 +223,6 @@ class ProgressService:
             stats.total_xp += COURSE_COMPLETION_XP
             stats.daily_xp += COURSE_COMPLETION_XP
 
-        # Check and grant course master achievement if code mapped
         ach_code = COURSE_MASTER_ACHIEVEMENTS.get(course_id)
         if ach_code:
             ach = gamification_repo.get_achievement_by_code(ach_code)
@@ -426,12 +435,154 @@ class ProgressService:
             units=unit_paths,
         )
 
+    def get_skill_performance(
+        self, current_user: UserModel, skill_id: str
+    ) -> SkillPerformanceResponse:
+        skill = (
+            self.db.query(SkillModel)
+            .options(joinedload(SkillModel.lessons))
+            .filter(SkillModel.id == skill_id)
+            .first()
+        )
+        if not skill:
+            raise NotFoundError(f"Skill '{skill_id}' not found.")
+
+        state = self.evaluate_skill_state(current_user.id, skill)
+        completion_pct = state.get("completion_percent", 0.0)
+
+        lesson_ids = [l.id for l in skill.lessons]
+        ex_attempts = (
+            self.db.query(ExerciseAttemptModel.is_correct)
+            .join(LessonAttemptModel, ExerciseAttemptModel.lesson_attempt_id == LessonAttemptModel.id)
+            .filter(
+                LessonAttemptModel.user_id == current_user.id,
+                LessonAttemptModel.lesson_id.in_(lesson_ids),
+            )
+            .all()
+        )
+
+        attempts_count = len(ex_attempts)
+        correct_count = sum(1 for a in ex_attempts if a.is_correct)
+        incorrect_count = attempts_count - correct_count
+        accuracy_pct = round((correct_count / attempts_count) * 100.0, 1) if attempts_count > 0 else 100.0
+
+        mastery_score = calculate_mastery_score(completion_pct, accuracy_pct)
+        mastery_state = calculate_mastery_state(mastery_score)
+        rec_diff = recommend_difficulty(current_difficulty=2, accuracy_percent=accuracy_pct)
+
+        return SkillPerformanceResponse(
+            skill_id=skill.id,
+            title=skill.title,
+            completion_percent=completion_pct,
+            accuracy_percent=accuracy_pct,
+            mastery_score=mastery_score,
+            mastery_state=mastery_state,
+            attempts=attempts_count,
+            correct=correct_count,
+            incorrect=incorrect_count,
+            recommended_difficulty=rec_diff,
+        )
+
+    def get_smart_review(
+        self, current_user: UserModel, course_id: Optional[str] = None
+    ) -> ReviewResponse:
+        c_id = course_id or "crs_english"
+
+        incorrect_rows = (
+            self.db.query(
+                ExerciseAttemptModel.exercise_id,
+                ExerciseAttemptModel.answer,
+                ExerciseAttemptModel.answered_at,
+                SkillModel.id.label("skill_id"),
+                SkillModel.title.label("skill_title"),
+            )
+            .join(LessonAttemptModel, ExerciseAttemptModel.lesson_attempt_id == LessonAttemptModel.id)
+            .join(LessonModel, LessonAttemptModel.lesson_id == LessonModel.id)
+            .join(SkillModel, LessonModel.skill_id == SkillModel.id)
+            .join(UnitModel, SkillModel.unit_id == UnitModel.id)
+            .filter(
+                LessonAttemptModel.user_id == current_user.id,
+                UnitModel.course_id == c_id,
+                ExerciseAttemptModel.is_correct == False,
+            )
+            .order_by(ExerciseAttemptModel.answered_at.desc())
+            .limit(10)
+            .all()
+        )
+
+        review_exercises: List[ReviewExerciseDetail] = []
+        review_skills_map: Dict[str, ReviewSkillSummary] = {}
+        seen_exercise_ids = set()
+
+        for row in incorrect_rows:
+            ex = (
+                self.db.query(ExerciseModel)
+                .filter(ExerciseModel.id == row.exercise_id)
+                .first()
+            )
+            if ex and ex.id not in seen_exercise_ids:
+                seen_exercise_ids.add(ex.id)
+                ex_data = json.loads(ex.data) if ex.data and isinstance(ex.data, str) else ex.data
+                review_exercises.append(
+                    ReviewExerciseDetail(
+                        id=ex.id,
+                        type=ex.type,
+                        prompt=ex.prompt,
+                        correct_answer=ex.correct_answer,
+                        data=ex_data,
+                        order_index=ex.order_index,
+                        xp_reward=0,
+                        skill_id=row.skill_id,
+                        previous_user_answer=row.answer,
+                    )
+                )
+
+                if row.skill_id not in review_skills_map:
+                    review_skills_map[row.skill_id] = ReviewSkillSummary(
+                        skill_id=row.skill_id,
+                        title=row.skill_title,
+                        accuracy_percent=60.0,
+                        reason="Recent mistakes",
+                    )
+
+        if not review_exercises:
+            fallback_skills = (
+                self.db.query(SkillModel)
+                .join(UnitModel, SkillModel.unit_id == UnitModel.id)
+                .filter(UnitModel.course_id == c_id)
+                .limit(2)
+                .all()
+            )
+            for f_skill in fallback_skills:
+                for lsn in f_skill.lessons[:2]:
+                    for ex in lsn.exercises[:2]:
+                        if ex.id not in seen_exercise_ids:
+                            seen_exercise_ids.add(ex.id)
+                            ex_data = json.loads(ex.data) if ex.data and isinstance(ex.data, str) else ex.data
+                            review_exercises.append(
+                                ReviewExerciseDetail(
+                                    id=ex.id,
+                                    type=ex.type,
+                                    prompt=ex.prompt,
+                                    correct_answer=ex.correct_answer,
+                                    data=ex_data,
+                                    order_index=ex.order_index,
+                                    xp_reward=0,
+                                    skill_id=f_skill.id,
+                                    previous_user_answer=None,
+                                )
+                            )
+
+        return ReviewResponse(
+            available=len(review_exercises) > 0,
+            count=len(review_exercises),
+            skills=list(review_skills_map.values()),
+            exercises=review_exercises[:10],
+        )
+
     def get_user_course_progress(
         self, current_user: UserModel, course_id: str
     ) -> CourseProgressSummaryResponse:
-        """
-        Lightweight API endpoint returning course-level progression summary for a user.
-        """
         path = self.get_learning_path(current_user=current_user, course_id=course_id)
         c = path.course
         return CourseProgressSummaryResponse(

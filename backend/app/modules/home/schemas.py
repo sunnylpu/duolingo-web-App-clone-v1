@@ -34,12 +34,19 @@ class HomeHeartsSummary(BaseModel):
     next_heart_refill_seconds: Optional[int] = None
 
 
+class HomeReviewSummary(BaseModel):
+    available: bool = False
+    count: int = 0
+    skills_count: int = 0
+
+
 class HomeDashboardResponse(BaseModel):
     course: CourseSummaryResponse
     continue_learning: ContinueLearningSummary
     daily_goal: HomeDailyGoalSummary
     streak: HomeStreakSummary
     hearts: HomeHeartsSummary
+    smart_review: HomeReviewSummary
     courses: List[CourseSummaryResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

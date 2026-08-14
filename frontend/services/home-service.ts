@@ -32,12 +32,19 @@ export interface HomeHeartsSummary {
   next_heart_refill_seconds?: number | null;
 }
 
+export interface HomeReviewSummary {
+  available: boolean;
+  count: number;
+  skills_count: number;
+}
+
 export interface HomeDashboardResponse {
   course: CourseSummary;
   continue_learning: ContinueLearningSummary;
   daily_goal: HomeDailyGoalSummary;
   streak: HomeStreakSummary;
   hearts: HomeHeartsSummary;
+  smart_review: HomeReviewSummary;
   courses: CourseSummary[];
 }
 
