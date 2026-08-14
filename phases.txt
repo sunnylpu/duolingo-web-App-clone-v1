@@ -1767,3 +1767,2022 @@ The learner lifecycle becomes:
 
 This is the last major **engagement** layer I'd add before we shift toward technical production work. The next hour should start tightening the architecture around **observability, audit trails, API health, and production-grade operational tooling** rather than adding endless UI features.
 
+# Phase 32 — Production Observability + Audit Trail + Operational Dashboard
+
+**Hour 14 of the remaining roadmap**
+
+We have now built almost the entire product ecosystem:
+
+```text
+Courses
+Units
+Skills
+Lessons
+Exercises
+Progression
+Mastery
+XP
+Hearts
+Streaks
+Quests
+Achievements
+Leaderboard
+Friends
+Notifications
+Search
+Vocabulary
+Smart Review
+```
+
+At this point, **stop adding user-facing features for a while**.
+
+The next requirement is to make the system look and behave like something that could actually be operated in production.
+
+This phase creates the foundation for:
+
+```text
+Application
+    ↓
+Logs
+    ↓
+Metrics
+    ↓
+Audit Events
+    ↓
+Health
+    ↓
+Operational Dashboard
+```
+
+This is especially important because your next deployment stages are:
+
+```text
+Docker
+→ Jenkins
+→ Kubernetes
+→ AWS
+```
+
+Kubernetes without health/metrics/logging is just containers running blindly.
+
+---
+
+# Phase 32 objectives
+
+Implement:
+
+```text
+1. Structured logging
+2. Request correlation
+3. Audit/event trail
+4. Application metrics
+5. Health/readiness checks
+6. Operational metrics endpoint
+7. Admin/ops dashboard foundation
+```
+
+Do **not** introduce Prometheus/Grafana infrastructure yet.
+
+We will prepare the application so Phase 36+ deployment can plug those systems in cleanly.
+
+---
+
+# 1. Structured logging
+
+Review:
+
+```text
+backend/app/shared/logging.py
+```
+
+Make logs structured and consistent.
+
+Every request should be able to produce information such as:
+
+```json
+{
+  "timestamp": "...",
+  "level": "INFO",
+  "service": "api",
+  "request_id": "req_abc123",
+  "method": "POST",
+  "path": "/api/v1/lessons/12/complete",
+  "status_code": 200,
+  "duration_ms": 124
+}
+```
+
+Do not log giant request/response bodies.
+
+---
+
+# 2. Never log sensitive data
+
+Explicitly prevent logging:
+
+```text
+passwords
+tokens
+authorization headers
+full exercise answers where inappropriate
+private user information
+database credentials
+API keys
+```
+
+Especially avoid:
+
+```python
+print(request.json())
+```
+
+in production code.
+
+---
+
+# 3. Request ID middleware
+
+Your project already has middleware infrastructure.
+
+Ensure:
+
+```text
+X-Request-ID
+```
+
+exists for every request.
+
+If the client provides a request ID, validate/use it appropriately.
+
+Otherwise generate one.
+
+Example:
+
+```text
+Request:
+POST /answer
+
+Request-ID:
+req_82f71c
+```
+
+Every relevant log entry generated during that request should contain:
+
+```text
+req_82f71c
+```
+
+---
+
+# 4. Response header
+
+Return:
+
+```text
+X-Request-ID: req_82f71c
+```
+
+This gives you:
+
+```text
+browser
+→ API
+→ logs
+```
+
+traceability.
+
+This becomes extremely useful once Kubernetes introduces multiple replicas.
+
+---
+
+# 5. Request timing middleware
+
+Measure:
+
+```text
+request start
+request end
+duration_ms
+```
+
+Log slow requests.
+
+For example:
+
+```text
+> 500ms
+```
+
+could generate:
+
+```text
+WARN slow_request
+```
+
+Make the threshold configurable:
+
+```text
+SLOW_REQUEST_THRESHOLD_MS=500
+```
+
+---
+
+# 6. Application metrics
+
+Create an in-process metrics abstraction.
+
+At minimum track:
+
+```text id="z02d4t"
+requests_total
+request_errors_total
+request_duration
+lesson_starts_total
+lesson_completions_total
+exercise_answers_total
+exercise_correct_total
+exercise_incorrect_total
+heart_losses_total
+xp_awarded_total
+quests_completed_total
+achievements_unlocked_total
+```
+
+Don't create dozens of metrics.
+
+Focus on business-critical events.
+
+---
+
+# 7. Metrics architecture
+
+Create:
+
+```text
+backend/app/shared/metrics.py
+```
+
+with a small interface such as:
+
+```text
+increment()
+observe()
+count()
+```
+
+The application shouldn't directly know whether metrics eventually go to:
+
+```text
+Prometheus
+CloudWatch
+Datadog
+```
+
+This abstraction will make deployment easier.
+
+---
+
+# 8. Metrics endpoint
+
+Create:
+
+```text
+GET /metrics
+```
+
+For now, return a simple internal representation if Prometheus isn't installed yet.
+
+However, preferably make the output **Prometheus-compatible** if practical.
+
+Example:
+
+```text
+duolingo_requests_total 1520
+duolingo_lesson_completions_total 83
+duolingo_exercise_answers_total 620
+```
+
+Then later Prometheus can scrape it directly.
+
+---
+
+# 9. Health endpoints
+
+Ensure these exist:
+
+```text
+GET /health/live
+GET /health/ready
+GET /health
+```
+
+### Live
+
+Answers:
+
+> Is the process running?
+
+```json
+{
+  "status": "ok"
+}
+```
+
+No database query needed.
+
+---
+
+# 10. Readiness
+
+`/health/ready` should check required dependencies.
+
+For now:
+
+```text
+database accessible
+```
+
+Example:
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database": "ok"
+  }
+}
+```
+
+If the database fails:
+
+```json
+{
+  "status": "not_ready",
+  "checks": {
+    "database": "error"
+  }
+}
+```
+
+Use an appropriate non-success HTTP status.
+
+This endpoint will later become the Kubernetes readiness probe.
+
+---
+
+# 11. Health response metadata
+
+It is useful to expose:
+
+```text
+application version
+environment
+timestamp
+```
+
+Example:
+
+```json
+{
+  "status": "ready",
+  "version": "1.0.0",
+  "environment": "production",
+  "checks": {
+    "database": "ok"
+  }
+}
+```
+
+Do not expose secrets or internal infrastructure information.
+
+---
+
+# 12. Application version
+
+Introduce:
+
+```text
+APP_VERSION=1.0.0
+```
+
+or derive it from a build/version file.
+
+The same value can later appear in:
+
+```text
+logs
+health
+Docker image
+deployment
+```
+
+---
+
+# 13. Audit trail
+
+Now create a generic audit/event model.
+
+Something like:
+
+```text
+AuditEvent
+----------------
+id
+user_id nullable
+event_type
+entity_type
+entity_id
+metadata
+created_at
+request_id
+```
+
+Examples:
+
+```text
+LESSON_COMPLETED
+SKILL_COMPLETED
+UNIT_COMPLETED
+COURSE_COMPLETED
+ACHIEVEMENT_EARNED
+QUEST_COMPLETED
+FOLLOW_CREATED
+PROFILE_UPDATED
+```
+
+---
+
+# 14. Audit vs activity feed
+
+Important distinction.
+
+### ActivityEvent
+
+```text
+user-facing social history
+```
+
+### AuditEvent
+
+```text
+internal operational history
+```
+
+Do not use the same table for both.
+
+The audit trail can answer:
+
+> What happened in the system and when?
+
+The activity feed answers:
+
+> What should the learner/social graph see?
+
+---
+
+# 15. Audit service
+
+Create:
+
+```text
+backend/app/shared/audit.py
+```
+
+or equivalent.
+
+Provide:
+
+```text
+record_event()
+```
+
+with:
+
+```text
+user
+event type
+entity
+metadata
+request_id
+```
+
+The application should call this from domain workflows.
+
+---
+
+# 16. High-value events
+
+Do not audit every exercise click.
+
+Record high-value transitions:
+
+```text
+lesson_started
+lesson_completed
+skill_completed
+unit_completed
+course_completed
+achievement_earned
+quest_completed
+heart_refilled
+practice_recovery
+follow_created
+follow_removed
+```
+
+This provides meaningful operational history.
+
+---
+
+# 17. Audit consistency
+
+When possible, create the audit event in the **same transaction** as the domain action.
+
+Example:
+
+```text
+Lesson completion
+ ├── XP
+ ├── progress
+ ├── achievement
+ └── audit event
+
+COMMIT
+```
+
+If the transaction rolls back:
+
+```text
+no audit event
+```
+
+This prevents audit history from claiming something happened when the underlying transaction failed.
+
+---
+
+# 18. Admin/operations statistics
+
+Create a read-only endpoint:
+
+```text
+GET /api/v1/admin/overview
+```
+
+Since real admin authentication isn't implemented yet, keep it strictly development/internal for now and clearly document that it must be protected before production.
+
+Return aggregate information such as:
+
+```json
+{
+  "users": {
+    "total": 24,
+    "active_today": 9
+  },
+  "courses": {
+    "total": 3
+  },
+  "learning": {
+    "lessons_completed_today": 47,
+    "exercises_answered_today": 381
+  },
+  "gamification": {
+    "xp_awarded_today": 920,
+    "achievements_unlocked_today": 12
+  },
+  "system": {
+    "requests_today": 18240,
+    "errors_today": 34
+  }
+}
+```
+
+Do not expose personal data.
+
+---
+
+# 19. Operations dashboard
+
+Create a lightweight internal page:
+
+```text
+/admin
+```
+
+or:
+
+```text
+/ops
+```
+
+Display:
+
+```text
+System Health
+API Requests
+Error Rate
+Active Users
+Lessons Completed
+Exercise Accuracy
+XP Awarded
+Achievements
+```
+
+Example:
+
+```text
+┌────────────────────────────────────────────┐
+│ Operations Dashboard                       │
+├────────────────────────────────────────────┤
+│ API Health          ● Healthy              │
+│ Database            ● Healthy              │
+│                                            │
+│ Requests Today        18,240              │
+│ Errors                    34              │
+│ Lesson Completions        47              │
+│ XP Awarded               920              │
+│                                            │
+│ Exercise Accuracy       84%               │
+└────────────────────────────────────────────┘
+```
+
+This is primarily a portfolio/evaluation feature.
+
+---
+
+# 20. Frontend ops structure
+
+Create:
+
+```text
+frontend/features/ops/
+├── components/
+│   ├── SystemHealthCard.tsx
+│   ├── MetricCard.tsx
+│   ├── ActivityMetric.tsx
+│   └── OpsDashboard.tsx
+├── hooks/
+│   └── useOpsOverview.ts
+└── services/
+    └── ops-service.ts
+```
+
+Keep it separate from learner-facing components.
+
+---
+
+# 21. Metrics useful for evaluation
+
+Show:
+
+```text
+API Requests
+API Errors
+Average Response Time
+Lessons Completed
+Exercises Answered
+Correct Answer %
+XP Awarded
+Achievements Earned
+```
+
+This gives you something concrete to discuss in an interview:
+
+> "We don't just deploy the API; we can observe its business and infrastructure behavior."
+
+---
+
+# 22. Error tracking
+
+Standardize unexpected server errors.
+
+When an exception occurs, log:
+
+```text
+request_id
+exception type
+path
+method
+stack trace
+```
+
+but return the client only:
+
+```json
+{
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "An unexpected error occurred."
+  }
+}
+```
+
+Never return the Python traceback to users.
+
+---
+
+# 23. Structured business-event logs
+
+Important events can additionally emit structured logs:
+
+```json
+{
+  "event": "lesson_completed",
+  "user_id": 1,
+  "lesson_id": 42,
+  "course_id": "crs_english",
+  "xp": 20,
+  "request_id": "req_123"
+}
+```
+
+Be careful with user identifiers and privacy.
+
+Use internal IDs rather than unnecessary personal data.
+
+---
+
+# 24. Database audit indexes
+
+Add indexes for:
+
+```text
+AuditEvent.user_id
+AuditEvent.event_type
+AuditEvent.created_at
+AuditEvent.request_id
+```
+
+Similarly ensure metrics/event queries have useful indexes.
+
+---
+
+# 25. Operational retention
+
+Don't keep infinite audit data in SQLite in the MVP.
+
+Document a future retention policy, for example:
+
+```text
+activity feed:
+90 days
+
+audit:
+180 days
+
+metrics:
+external time-series system
+```
+
+No need to implement automated cleanup yet.
+
+---
+
+# 26. Correlation across domains
+
+A single lesson completion should be traceable:
+
+```text
+request_id
+   ↓
+LessonCompleted
+   ↓
+XP
+   ↓
+SkillProgress
+   ↓
+UnitMilestone
+   ↓
+Achievement
+   ↓
+Notification
+```
+
+Each domain can use the same request ID.
+
+This becomes extremely valuable when you later split services.
+
+---
+
+# 27. Future microservice readiness
+
+We previously discussed treating modules as future services.
+
+Now the event flow can eventually become:
+
+```text
+Lesson Service
+      │
+      │ LessonCompleted
+      ▼
+Event Bus
+ ┌────┼──────┬────────┐
+ ▼    ▼      ▼        ▼
+XP   Progress Achievement Notifications
+```
+
+**Do not implement the event bus now.**
+
+Just make the event/audit boundaries explicit.
+
+---
+
+# 28. Test health endpoints
+
+Test:
+
+```text
+/health/live → 200
+/health/ready → 200 when DB works
+/health/ready → non-200 when DB unavailable
+```
+
+---
+
+# 29. Test metrics
+
+Perform:
+
+```text
+GET /metrics
+```
+
+after:
+
+```text
+lesson completion
+exercise answer
+quest completion
+achievement
+```
+
+Verify counters increase correctly.
+
+---
+
+# 30. Test audit
+
+Complete a lesson:
+
+```text
+lesson_completed
+```
+
+Verify an AuditEvent exists with:
+
+```text
+user
+entity
+event type
+request ID
+timestamp
+```
+
+Repeat a failed transaction and verify:
+
+```text
+no misleading committed audit event
+```
+
+---
+
+# 31. Test notification correlation
+
+Trigger:
+
+```text
+achievement earned
+```
+
+Verify:
+
+```text
+achievement record
+notification
+audit event
+```
+
+all correlate to the same request/workflow.
+
+---
+
+# 32. Performance impact
+
+Observability itself must not destroy performance.
+
+Logging should be:
+
+```text
+structured
+minimal
+non-blocking where practical
+```
+
+Metrics should use cheap in-process counters.
+
+Audit writes should be transactional but not unnecessarily duplicated.
+
+---
+
+# 33. Phase 32 acceptance criteria
+
+```text
+[ ] Structured logging exists
+[ ] Request ID exists
+[ ] X-Request-ID response header exists
+[ ] Request duration is measured
+[ ] Slow-request threshold is configurable
+[ ] Sensitive information is excluded from logs
+[ ] Metrics abstraction exists
+[ ] Business metrics exist
+[ ] /metrics endpoint exists
+[ ] /health/live exists
+[ ] /health/ready exists
+[ ] readiness checks database
+[ ] APP_VERSION exists
+[ ] AuditEvent model exists
+[ ] Audit service exists
+[ ] High-value domain events are audited
+[ ] Audit events use request correlation
+[ ] Audit events respect transactions
+[ ] Ops overview API exists
+[ ] Ops dashboard exists
+[ ] Error handling doesn't expose stack traces
+[ ] Metrics tests pass
+[ ] Health tests pass
+[ ] Audit tests pass
+[ ] Backend tests pass
+[ ] Frontend build passes
+```
+
+---
+
+# What Phase 32 does NOT implement
+
+```text
+❌ Prometheus server
+❌ Grafana
+❌ CloudWatch
+❌ OpenTelemetry collector
+❌ Kafka
+❌ RabbitMQ
+❌ Redis
+❌ ELK
+❌ Real admin authentication
+❌ Docker
+❌ Jenkins
+❌ Kubernetes
+❌ AWS
+```
+
+Those come later.
+
+---
+
+# Result after Hour 14
+
+Your architecture now becomes much closer to a production system:
+
+```text
+                    APPLICATION
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+       Business        Audit          Metrics
+        Logic          Trail          / Logs
+          │              │              │
+          └──────────────┼──────────────┘
+                         ▼
+                  Health / Readiness
+                         │
+                         ▼
+                  Deployment Layer
+```
+
+And later:
+
+```text
+Docker
+   ↓
+Jenkins
+   ↓
+Kubernetes
+   ↓
+Prometheus/Grafana
+   ↓
+AWS
+```
+
+This is the right transition point: **we have spent 14 hours making the product deep; now the remaining hours should increasingly make it deployable, observable, secure, and production-operable.**
+
+# Phase 33 — Production Security, Configuration Hardening & API Protection
+
+**Hour 15 of the remaining roadmap**
+
+Phase 32 established observability:
+
+```text
+Logs
+Metrics
+Audit
+Health
+Readiness
+Request IDs
+Ops dashboard
+```
+
+Now we make the application **safe to expose to the internet**.
+
+This is the last major backend-hardening phase before we start preparing the actual deployment stack.
+
+The focus is:
+
+```text
+Configuration
+→ Secrets
+→ CORS
+→ Security headers
+→ API validation
+→ Rate limiting foundation
+→ Database safety
+→ Production error handling
+→ Dependency/security audit
+```
+
+---
+
+# 1. Environment configuration audit
+
+Review:
+
+```text id="1v6yjr"
+backend/app/config.py
+frontend/.env*
+```
+
+Move every environment-specific value out of source code.
+
+Expected categories:
+
+```text id="8asgl8"
+APP_ENV
+APP_VERSION
+DEBUG
+DATABASE_URL
+CORS_ORIGINS
+APP_TIMEZONE
+
+MAX_HEARTS
+HEART_REGEN_MINUTES
+PRACTICE_RECOVERY_COOLDOWN_MINUTES
+
+SLOW_REQUEST_THRESHOLD_MS
+```
+
+Also:
+
+```text id="izp3gf"
+NEXT_PUBLIC_API_URL
+NEXT_PUBLIC_APP_ENV
+```
+
+where appropriate.
+
+---
+
+# 2. Secret management
+
+Search the repository for:
+
+```text
+password
+secret
+token
+api_key
+private_key
+```
+
+There must be **no real credentials in Git**.
+
+Check:
+
+```text id="6f3k0u"
+.env
+.env.local
+.env.production
+```
+
+and ensure they are ignored where appropriate.
+
+Create:
+
+```text id="5y5h5m"
+.env.example
+```
+
+containing placeholders:
+
+```env
+APP_ENV=development
+APP_VERSION=1.0.0
+DATABASE_URL=sqlite:///./app.db
+CORS_ORIGINS=http://localhost:3000
+```
+
+Never put actual secrets in `.env.example`.
+
+---
+
+# 3. Git secret scan
+
+Perform a repository-wide search for accidental secrets.
+
+Check:
+
+```text id="4rih8g"
+Git history
+source files
+config files
+scripts
+README
+logs
+test fixtures
+```
+
+If a fake credential exists only as test data, make that explicit.
+
+If a real credential was ever committed, it must be rotated rather than merely deleted.
+
+---
+
+# 4. Production DEBUG behavior
+
+Ensure:
+
+```text id="uo0c5g"
+DEBUG=true
+```
+
+is only possible in development.
+
+Production:
+
+```text id="ovp6m6"
+DEBUG=false
+```
+
+Never expose:
+
+```text id="gk7ji7"
+stack traces
+SQL queries
+environment variables
+internal paths
+```
+
+to clients.
+
+---
+
+# 5. CORS hardening
+
+Replace development-style:
+
+```python
+allow_origins=["*"]
+```
+
+with environment-driven configuration.
+
+Development:
+
+```text id="yrd2yq"
+http://localhost:3000
+```
+
+Production:
+
+```text id="v2tc9u"
+https://your-frontend-domain
+```
+
+Only allow required origins.
+
+Also review:
+
+```text allow_credentials
+allow_methods
+allow_headers
+```
+
+Do not enable everything blindly.
+
+---
+
+# 6. Security headers
+
+Implement appropriate headers.
+
+At minimum consider:
+
+```text id="w5t9f2"
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+Also consider a suitable:
+
+```text Content-Security-Policy
+```
+
+but implement it carefully so it does not break Next.js or browser speech APIs.
+
+Test the actual application after enabling it.
+
+---
+
+# 7. Request size limits
+
+Protect JSON endpoints from unnecessarily large payloads.
+
+Especially:
+
+```text id="yqz0q2"
+/answer
+/review
+/search
+/social
+```
+
+You don't need huge payloads for this application.
+
+Define sensible limits.
+
+For example:
+
+```text id="kzj0al"
+answer payload
+→ small bounded size
+
+search query
+→ max ~100–200 characters
+```
+
+Exact numbers should be based on your actual schemas.
+
+---
+
+# 8. Query parameter validation
+
+Audit:
+
+```text id="dnv9bk"
+course_id
+lesson_id
+skill_id
+user_id
+limit
+offset
+period
+scope
+query
+```
+
+Validate:
+
+```text integer IDs > 0
+limit bounded
+offset >= 0
+enum values restricted
+strings length limited
+```
+
+No endpoint should accept arbitrary unbounded pagination.
+
+---
+
+# 9. Pagination protection
+
+Audit every collection endpoint:
+
+```text id="b9lm8e"
+leaderboard
+notifications
+social feed
+search
+vocabulary
+achievements
+quests
+```
+
+Use:
+
+```text id="mvrqgk"
+default limit
+maximum limit
+offset/cursor constraints
+```
+
+Example:
+
+```text limit=20
+max=100
+```
+
+A malicious request like:
+
+```text id="u04o2h"
+limit=1000000000
+```
+
+must be rejected or capped.
+
+---
+
+# 10. Rate-limiting foundation
+
+Do not add Redis yet.
+
+But establish the architecture.
+
+Create:
+
+```text id="n8e6n5"
+backend/app/shared/rate_limit.py
+```
+
+with a small abstraction:
+
+```text id="gdu3kq"
+check()
+consume()
+reset()
+```
+
+The implementation can initially be in-memory for development.
+
+Document that production will move the state to:
+
+```text id="t0j58b"
+Redis
+```
+
+when multiple replicas exist.
+
+---
+
+# 11. Protect sensitive endpoints
+
+Prioritize:
+
+```text id="v6v9o9"
+POST /answer
+POST /complete
+POST /practice
+POST /refill
+POST /follow
+POST /notifications/read
+```
+
+The most sensitive are:
+
+```text id="dq8r7m"
+/answer
+/complete
+/refill
+```
+
+because they affect game state.
+
+Don't make rate limiting so aggressive that normal learning breaks.
+
+---
+
+# 12. Idempotency foundation
+
+You already protected duplicate:
+
+```text id="1m8x9a"
+answer
+lesson completion
+achievement
+unit reward
+course reward
+quest reward
+```
+
+Now formalize the concept.
+
+For mutation endpoints where retries are likely, consider:
+
+```text id="c0kcyc"
+Idempotency-Key
+```
+
+especially:
+
+```text id="h5p7f4"
+/complete
+/refill
+```
+
+For the current MVP, application/database constraints remain the primary defense.
+
+---
+
+# 13. Mutation authorization audit
+
+Every state-changing endpoint must derive ownership from:
+
+```text id="1fq8fr"
+current user
+```
+
+not request bodies.
+
+Audit:
+
+```text id="fjgk9t"
+follow
+unfollow
+answer
+complete
+practice
+refill
+read notification
+quests
+```
+
+Look for request fields such as:
+
+```json id="9x8kjr"
+{
+  "user_id": 10
+}
+```
+
+that can bypass ownership.
+
+Remove or ignore those fields where unnecessary.
+
+---
+
+# 14. Business authorization matrix
+
+Document:
+
+| Operation           | Required ownership/business rule    |
+| ------------------- | ----------------------------------- |
+| Answer exercise     | Current user owns active attempt    |
+| Complete lesson     | Current user owns attempt           |
+| Start lesson        | Skill must be available/in-progress |
+| Practice            | Current user                        |
+| Refill              | Current user                        |
+| Read notification   | Current user                        |
+| Follow              | Current user is follower            |
+| View public profile | Public data only                    |
+| Read admin overview | Internal/admin only                 |
+
+This becomes part of:
+
+```text id="ov5i9k"
+docs/security.md
+```
+
+---
+
+# 15. Admin endpoint protection
+
+This is especially important.
+
+We created:
+
+```text id="76j2or"
+/api/v1/admin/overview
+/ops
+```
+
+Do **not** leave this publicly usable in production.
+
+Until authentication exists, make it:
+
+```text id="y4tyfr"
+development-only
+```
+
+or protect it with a clearly documented internal mechanism.
+
+Before AWS deployment, the production version must require authentication/authorization.
+
+---
+
+# 16. Public/private API classification
+
+Create documentation:
+
+```text id="rk3fm5"
+docs/api-access.md
+```
+
+Classify:
+
+```text public
+learner
+admin/internal
+development-only
+```
+
+This prevents accidentally deploying development APIs publicly.
+
+---
+
+# 17. Database safety
+
+Review database configuration.
+
+Development:
+
+```text id="1yro4y"
+SQLite
+```
+
+Production architecture later:
+
+```text id="qpmeyx"
+PostgreSQL
+```
+
+Do not attempt to make SQLite solve distributed production writes.
+
+However, for this assignment/demo:
+
+```text id="f09m22"
+keep SQLite
+```
+
+until deployment architecture requires otherwise.
+
+Document the migration path.
+
+---
+
+# 18. Database foreign-key enforcement
+
+Ensure SQLite foreign keys are enabled:
+
+```text id="z5j4p7"
+PRAGMA foreign_keys = ON
+```
+
+Verify tests actually fail when invalid relationships are attempted.
+
+This is easy to forget and important for integrity.
+
+---
+
+# 19. Database migration strategy
+
+If you haven't already, establish a migration strategy.
+
+Preferred:
+
+```text id="q6pmwv"
+Alembic
+```
+
+or a clearly documented migration mechanism.
+
+The application should not depend on:
+
+```text id="w5j8u3"
+drop database
+reseed
+```
+
+for production schema changes.
+
+You can continue using seed scripts for content, but schema changes should be versioned.
+
+---
+
+# 20. Seed vs migration separation
+
+Clearly separate:
+
+```text id="e8szhw"
+migrations
+→ schema changes
+
+seed
+→ initial/demo content
+
+catalog generator
+→ course content generation
+```
+
+Do not mix them.
+
+This becomes very important in Docker/Kubernetes.
+
+---
+
+# 21. Dependency audit
+
+Backend:
+
+```bash id="c6z9f5"
+pip list
+pip-audit
+```
+
+Frontend:
+
+```bash id="gb8jx9"
+npm audit
+```
+
+Review actual vulnerabilities.
+
+Do not blindly run:
+
+```bash
+npm audit fix --force
+```
+
+because it may break the application.
+
+Update only where safe and test afterwards.
+
+---
+
+# 22. Lock dependencies
+
+Ensure:
+
+```text id="m0b0b0"
+package-lock.json
+```
+
+and:
+
+```text id="v8pvw5"
+Python dependency lock/constraints
+```
+
+are committed.
+
+For production builds, dependencies should be reproducible.
+
+---
+
+# 23. Python version consistency
+
+Define the supported version.
+
+For example:
+
+```text id="8mtgkz"
+Python 3.12
+```
+
+Whatever your actual environment uses.
+
+Document it in:
+
+```text id="0d9qv7"
+README
+pyproject.toml
+Dockerfile later
+```
+
+Do not allow local development to silently use incompatible Python versions.
+
+---
+
+# 24. Node/Next version consistency
+
+Record:
+
+```text id="4z7x1k"
+Node version
+npm version
+Next.js version
+```
+
+Add:
+
+```text id="1r7jv5"
+.nvmrc
+```
+
+if appropriate.
+
+This will make Jenkins and Docker builds reproducible.
+
+---
+
+# 25. Production environment validation
+
+Create startup validation.
+
+The backend should detect invalid production config such as:
+
+```text id="o8f6l1"
+DEBUG=true
+missing DATABASE_URL
+invalid CORS
+missing required configuration
+```
+
+and fail clearly.
+
+Don't start a supposedly production server with broken configuration.
+
+---
+
+# 26. Graceful shutdown
+
+FastAPI should handle shutdown cleanly.
+
+Review:
+
+```text id="6kt4rd"
+startup
+shutdown
+database connections
+background resources
+```
+
+This becomes important in Kubernetes where pods are terminated regularly.
+
+---
+
+# 27. Request timeout considerations
+
+Identify operations that should not hang indefinitely:
+
+```text id="7e8rv0"
+database query
+external API
+speech/audio future service
+```
+
+For this MVP there may not be external requests, but document the pattern.
+
+---
+
+# 28. Security-focused tests
+
+Add tests for:
+
+```text id="2r3iz8"
+invalid IDs
+invalid pagination
+oversized inputs
+unauthorized mutation
+locked lesson access
+cross-user attempt access
+admin endpoint protection
+CORS
+security headers
+debug mode behavior
+```
+
+---
+
+# 29. Production configuration test
+
+Create a test configuration representing:
+
+```text id="nwt4mt"
+APP_ENV=production
+DEBUG=false
+```
+
+Then run the backend and verify:
+
+```text id="q2x4qn"
+health works
+API works
+CORS correct
+stack traces hidden
+security headers present
+```
+
+---
+
+# 30. Frontend security review
+
+Check:
+
+```text id="kj4s7j"
+dangerouslySetInnerHTML
+localStorage sensitive data
+exposed environment variables
+unsafe URL navigation
+external links
+```
+
+Never store server-side secrets in:
+
+```text id="aqz4y1"
+NEXT_PUBLIC_*
+```
+
+---
+
+# 31. Client-side storage audit
+
+The browser should only store non-sensitive convenience state, such as:
+
+```text id="mj6jxl"
+selected course
+UI preferences
+```
+
+Do not store:
+
+```text id="tqk8aq"
+database credentials
+private backend secrets
+admin tokens
+```
+
+Authentication isn't implemented yet, so don't invent a token-storage system.
+
+---
+
+# 32. Security documentation
+
+Create:
+
+```text id="6cb2td"
+docs/security.md
+```
+
+Include:
+
+```text id="2ljd7k"
+threat model
+ownership rules
+API access levels
+secrets policy
+CORS
+headers
+rate limiting
+input validation
+database integrity
+future auth model
+```
+
+---
+
+# 33. Future authentication architecture
+
+Do not implement full authentication this hour.
+
+But document:
+
+```text id="3c51yj"
+Frontend
+ ↓
+Access Token
+ ↓
+FastAPI auth dependency
+ ↓
+CurrentUser
+ ↓
+Domain services
+```
+
+Your current demo-user dependency should be designed so replacing it later doesn't require rewriting every router/service.
+
+---
+
+# 34. Security production checklist
+
+Create:
+
+```text id="6q6g0e"
+docs/security-checklist.md
+```
+
+with:
+
+```text id="o8q1ob"
+[ ] no secrets in Git
+[ ] production DEBUG=false
+[ ] CORS restricted
+[ ] security headers
+[ ] request limits
+[ ] pagination limits
+[ ] ownership validation
+[ ] admin protection
+[ ] dependency scan
+[ ] database foreign keys
+[ ] migrations
+[ ] reproducible dependencies
+[ ] logs safe
+```
+
+---
+
+# 35. Phase 33 acceptance criteria
+
+```text id="0hyh1s"
+[ ] Production config is environment-driven
+[ ] .env.example exists
+[ ] No real secrets are committed
+[ ] Production DEBUG is disabled
+[ ] CORS is restricted
+[ ] Security headers exist
+[ ] Request payload limits exist
+[ ] Query parameters are validated
+[ ] Pagination has safe limits
+[ ] Rate-limit abstraction exists
+[ ] Critical mutations identified/protected
+[ ] Ownership checks audited
+[ ] Admin endpoints are protected/development-only
+[ ] SQLite foreign keys are enforced
+[ ] Migration strategy exists
+[ ] Seed/migration responsibilities are separated
+[ ] Dependency audit completed
+[ ] Dependency versions are reproducible
+[ ] Python/Node versions are documented
+[ ] Startup configuration validation exists
+[ ] Graceful shutdown is handled
+[ ] Security tests exist
+[ ] Production configuration test passes
+[ ] docs/security.md exists
+[ ] docs/security-checklist.md exists
+```
+
+---
+
+# What this phase does NOT implement
+
+```text id="m9km6k"
+❌ Full user authentication
+❌ OAuth
+❌ JWT implementation
+❌ Redis
+❌ Production rate-limit storage
+❌ PostgreSQL migration
+❌ WAF
+❌ Cloud secrets manager
+❌ Docker
+❌ Jenkins
+❌ Kubernetes
+❌ AWS
+```
+
+---
+
+# After Hour 15
+
+We've reached an important boundary.
+
+The product side is now very deep:
+
+```text id="m1g4fp"
+Courses
+Units
+Skills
+Lessons
+Exercises
+Mastery
+Review
+Quests
+Achievements
+Social
+Notifications
+Search
+Vocabulary
+```
+
+And the operational side now has:
+
+```text id="z5j0t9"
+Health
+Metrics
+Logs
+Audit
+Security
+Configuration
+```
+
+So the remaining hours should stop expanding the application indefinitely.
+
+The next sequence should be:
+
+```text
+Hour 16 → Final architecture review + production readiness
+Hour 17 → Final automated regression / release candidate
+Hour 18 → Docker
+Hour 19 → Jenkins CI/CD
+Hour 20 → Kubernetes
+Hour 21 → AWS production deployment
+```
+
+That gives the last six hours a very clear **DevOps-to-production trajectory**, which is much more valuable for this project than continuing to add increasingly minor UI features.

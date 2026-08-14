@@ -7,6 +7,7 @@ import { userService } from "@/services/user-service";
 import { UserStats } from "@/types";
 import { OutOfHeartsModal } from "@/features/gamification/components/OutOfHeartsModal";
 import { CourseSwitcher } from "@/features/course";
+import { SearchBar } from "@/features/search";
 
 export const Header: React.FC = () => {
   const pathname = usePathname();
@@ -28,18 +29,18 @@ export const Header: React.FC = () => {
 
   const navItems = [
     { label: "Learn", href: "/learn" },
+    { label: "Vocab", href: "/vocabulary" },
     { label: "Friends", href: "/friends" },
     { label: "Leaderboard", href: "/leaderboard" },
     { label: "Profile", href: "/profile" },
-    { label: "Settings", href: "/settings" },
   ];
 
   return (
     <>
       <header className="sticky top-0 z-40 bg-[#131f24]/90 backdrop-blur border-b border-[#37464f] px-4 md:px-8 py-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           {/* Brand Logo & Course Selector */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <Link href="/" className="flex items-center gap-2 group">
               <div className="w-9 h-9 rounded-xl bg-[#58cc02] flex items-center justify-center text-black font-black text-xl shadow-[0_3px_0_#46a302] group-hover:scale-105 transition-transform">
                 D
@@ -54,6 +55,11 @@ export const Header: React.FC = () => {
             </Suspense>
           </div>
 
+          {/* Search Bar Widget */}
+          <div className="hidden sm:block flex-1 max-w-xs">
+            <SearchBar />
+          </div>
+
           {/* Desktop Navigation Bar */}
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {
@@ -62,7 +68,7 @@ export const Header: React.FC = () => {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
+                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs lg:text-sm transition-all ${
                     isActive
                       ? "bg-[#182830] text-[#1cb0f6] border-2 border-[#1cb0f6]"
                       : "text-gray-400 hover:text-white hover:bg-[#182830]/60"
@@ -75,7 +81,7 @@ export const Header: React.FC = () => {
           </nav>
 
           {/* User Stats Bar (Global Stats) */}
-          <div className="flex items-center gap-3 text-xs md:text-sm font-black select-none">
+          <div className="flex items-center gap-2 text-xs font-black select-none shrink-0">
             {stats ? (
               <>
                 {/* Streak */}
@@ -105,7 +111,7 @@ export const Header: React.FC = () => {
                 </button>
                 {/* Gems */}
                 <div
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-[#182830] border border-[#1cb0f6]/30 text-[#1cb0f6]"
+                  className="hidden xl:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-[#182830] border border-[#1cb0f6]/30 text-[#1cb0f6]"
                   title="Gems Balance"
                 >
                   <span>💎</span>
