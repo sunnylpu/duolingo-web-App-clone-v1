@@ -14,6 +14,9 @@ export interface CourseSummary {
   target_language: string;
   description: string | null;
   is_active: boolean;
+  total_skills?: number;
+  completed_skills?: number;
+  progress_percent?: number;
 }
 
 export interface CourseDetail extends CourseSummary {

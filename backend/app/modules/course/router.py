@@ -19,9 +19,12 @@ def get_course_service(db: Session = Depends(get_db)) -> CourseService:
 
 
 @router.get("/courses", response_model=List[CourseSummaryResponse], summary="List available courses")
-def list_courses(service: CourseService = Depends(get_course_service)):
-    """Return all active language courses."""
-    return service.get_courses()
+def list_courses(
+    current_user: UserModel = Depends(get_current_user),
+    service: CourseService = Depends(get_course_service),
+):
+    """Return all active language courses with user-specific progress metadata."""
+    return service.get_courses(current_user=current_user)
 
 
 @router.get("/courses/{course_id}", response_model=CourseDetailResponse, summary="Get course details")

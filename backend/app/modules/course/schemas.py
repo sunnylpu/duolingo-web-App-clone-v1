@@ -20,6 +20,9 @@ class CourseSummaryResponse(BaseModel):
     target_language: str
     description: Optional[str] = None
     is_active: bool
+    total_skills: int = 0
+    completed_skills: int = 0
+    progress_percent: float = 0.0
 
     model_config = ConfigDict(from_attributes=True)
 

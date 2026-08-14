@@ -19,9 +19,35 @@ class CourseService:
         self.course_repo = CourseRepository(db)
         self.progress_service = ProgressService(db)
 
-    def get_courses(self) -> List[CourseSummaryResponse]:
+    def get_courses(self, current_user: Optional[UserModel] = None) -> List[CourseSummaryResponse]:
         courses = self.course_repo.get_courses()
-        return [CourseSummaryResponse.model_validate(c) for c in courses]
+        results = []
+        for c in courses:
+            total_skills = sum(len(u.skills) for u in c.units)
+            completed_skills = 0
+            progress_pct = 0.0
+
+            if current_user:
+                path = self.progress_service.get_learning_path(current_user, course_id=c.id)
+                all_skills = [s for u in path.units for s in u.skills]
+                completed_skills = sum(1 for s in all_skills if s.status == "completed")
+                if total_skills > 0:
+                    progress_pct = round((completed_skills / total_skills) * 100, 1)
+
+            resp = CourseSummaryResponse(
+                id=c.id,
+                name=c.name,
+                code=c.code,
+                source_language=c.source_language,
+                target_language=c.target_language,
+                description=c.description,
+                is_active=c.is_active,
+                total_skills=total_skills,
+                completed_skills=completed_skills,
+                progress_percent=progress_pct,
+            )
+            results.append(resp)
+        return results
 
     def get_course_detail(self, course_id: str) -> CourseDetailResponse:
         course = self.course_repo.get_course_by_id(course_id)

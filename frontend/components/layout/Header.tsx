@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { userService } from "@/services/user-service";
 import { UserStats } from "@/types";
 import { OutOfHeartsModal } from "@/features/gamification/components/OutOfHeartsModal";
+import { CourseSwitcher } from "@/features/course";
 
 export const Header: React.FC = () => {
   const pathname = usePathname();
@@ -36,15 +37,21 @@ export const Header: React.FC = () => {
     <>
       <header className="sticky top-0 z-40 bg-[#131f24]/90 backdrop-blur border-b border-[#37464f] px-4 md:px-8 py-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          {/* Brand Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-9 h-9 rounded-xl bg-[#58cc02] flex items-center justify-center text-black font-black text-xl shadow-[0_3px_0_#46a302] group-hover:scale-105 transition-transform">
-              D
-            </div>
-            <span className="font-black text-xl tracking-tight text-white hidden sm:inline">
-              Duolingo
-            </span>
-          </Link>
+          {/* Brand Logo & Course Selector */}
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2 group">
+              <div className="w-9 h-9 rounded-xl bg-[#58cc02] flex items-center justify-center text-black font-black text-xl shadow-[0_3px_0_#46a302] group-hover:scale-105 transition-transform">
+                D
+              </div>
+              <span className="font-black text-xl tracking-tight text-white hidden lg:inline">
+                Duolingo
+              </span>
+            </Link>
+
+            <Suspense fallback={<div className="w-24 h-8 bg-slate-800 rounded-xl animate-pulse" />}>
+              <CourseSwitcher />
+            </Suspense>
+          </div>
 
           {/* Desktop Navigation Bar */}
           <nav className="hidden md:flex items-center gap-1">
@@ -66,7 +73,7 @@ export const Header: React.FC = () => {
             })}
           </nav>
 
-          {/* User Stats Bar */}
+          {/* User Stats Bar (Global Stats) */}
           <div className="flex items-center gap-3 text-xs md:text-sm font-black select-none">
             {stats ? (
               <>

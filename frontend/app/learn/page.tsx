@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { pathService } from "@/services/path-service";
 import { userService } from "@/services/user-service";
 import { PathResponse, UserStats } from "@/types";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { LearningPath } from "@/features/path/LearningPath";
 
-export default function LearnPage() {
+function LearnPageContent() {
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get("course") || undefined;
+
   const [path, setPath] = useState<PathResponse | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -18,7 +22,7 @@ export default function LearnPage() {
     setError(null);
     try {
       const [pathRes, statsRes] = await Promise.all([
-        pathService.getLearningPath(),
+        pathService.getLearningPath(courseId),
         userService.getUserStats().catch(() => null),
       ]);
       setPath(pathRes);
@@ -32,7 +36,7 @@ export default function LearnPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [courseId]);
 
   if (loading) {
     return (
@@ -69,9 +73,22 @@ export default function LearnPage() {
       pathData={path}
       stats={stats}
       onStartLesson={(skillId) => {
-        // Will trigger lesson player navigation in Phase 06
         console.log(`Ready to start lesson for skill: ${skillId}`);
       }}
     />
+  );
+}
+
+export default function LearnPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-3xl mx-auto space-y-6 py-4 animate-pulse">
+          <div className="h-32 bg-[#182830] rounded-2xl border-2 border-[#37464f]" />
+        </div>
+      }
+    >
+      <LearnPageContent />
+    </Suspense>
   );
 }
