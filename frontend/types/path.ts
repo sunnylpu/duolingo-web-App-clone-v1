@@ -31,5 +31,7 @@ export interface UnitPath {
 export interface PathResponse {
   course: CourseSummary;
   recommended_skill_id?: string | null;
+  recommended_lesson_id?: string | null;
+  recommended_unit_id?: string | null;
   units: UnitPath[];
 }

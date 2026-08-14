@@ -96,6 +96,8 @@ class CourseProgressSummaryResponse(BaseModel):
 class PathResponse(BaseModel):
     course: CourseSummaryResponse
     recommended_skill_id: Optional[str] = None
+    recommended_lesson_id: Optional[str] = None
+    recommended_unit_id: Optional[str] = None
     units: List[UnitPathResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

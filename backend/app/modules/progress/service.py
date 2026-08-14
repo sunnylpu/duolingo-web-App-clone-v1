@@ -372,6 +372,19 @@ class ProgressService:
             )
 
         final_recommended = recommended_skill_id or first_available_skill_id
+        recommended_unit_id: Optional[str] = None
+        recommended_lesson_id: Optional[str] = None
+
+        if final_recommended and final_recommended in skill_map:
+            rec_skill = skill_map[final_recommended]
+            recommended_unit_id = rec_skill.unit_id
+            rec_lessons = sorted(rec_skill.lessons, key=lambda l: l.order_index)
+            for lsn in rec_lessons:
+                if lsn.id not in completed_lesson_ids:
+                    recommended_lesson_id = lsn.id
+                    break
+            if not recommended_lesson_id and rec_lessons:
+                recommended_lesson_id = rec_lessons[0].id
 
         course_progress_pct = (
             round((completed_course_skills / total_course_skills) * 100.0, 1)
@@ -408,6 +421,8 @@ class ProgressService:
         return PathResponse(
             course=course_summary,
             recommended_skill_id=final_recommended,
+            recommended_lesson_id=recommended_lesson_id,
+            recommended_unit_id=recommended_unit_id,
             units=unit_paths,
         )
 
