@@ -54,6 +54,7 @@ def init_db(target_engine=None) -> None:
         UserAchievementModel,
     )
     from app.modules.leaderboard.models import LeaderboardEntryModel  # noqa: F401
+    from app.modules.social.models import UserFollowModel, ActivityEventModel  # noqa: F401
 
     exec_engine = target_engine if target_engine is not None else engine
     Base.metadata.create_all(bind=exec_engine)

@@ -13,15 +13,16 @@ import { Badge } from "@/components/ui/Badge";
 
 export default function LeaderboardPage() {
   const [period, setPeriod] = useState<LeaderboardPeriod>("weekly");
+  const [scope, setScope] = useState<"global" | "friends">("global");
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchLeaderboard = async (selectedPeriod: LeaderboardPeriod) => {
+  const fetchLeaderboard = async (selectedPeriod: LeaderboardPeriod, selectedScope: "global" | "friends") => {
     setLoading(true);
     setError(null);
     try {
-      const res = await leaderboardService.getLeaderboard(selectedPeriod, 20, 0);
+      const res = await leaderboardService.getLeaderboard(selectedPeriod, 20, 0, selectedScope);
       setData(res);
     } catch (err: any) {
       setError(err?.message || "Failed to load leaderboard standings.");
@@ -31,10 +32,8 @@ export default function LeaderboardPage() {
   };
 
   useEffect(() => {
-    fetchLeaderboard(period);
-  }, [period]);
-
-  const currentUserEntry = data?.entries.find((e) => e.is_current_user);
+    fetchLeaderboard(period, scope);
+  }, [period, scope]);
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto py-2">
@@ -44,8 +43,32 @@ export default function LeaderboardPage() {
           <span>🏆</span> Leaderboard Leagues
         </h1>
         <p className="text-xs text-gray-400 font-medium max-w-sm mx-auto">
-          Compete with fellow learners and climb the ranks by completing daily lessons.
+          Compete with fellow learners and friends by completing daily lessons.
         </p>
+      </div>
+
+      {/* Scope Selector (Global vs Friends) */}
+      <div className="flex justify-center gap-2">
+        <button
+          onClick={() => setScope("global")}
+          className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+            scope === "global"
+              ? "bg-[#1cb0f6] text-black shadow-[0_2px_0_#1899d6]"
+              : "bg-[#182830] text-gray-400 border border-[#37464f] hover:text-white"
+          }`}
+        >
+          🌐 Global League
+        </button>
+        <button
+          onClick={() => setScope("friends")}
+          className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+            scope === "friends"
+              ? "bg-[#1cb0f6] text-black shadow-[0_2px_0_#1899d6]"
+              : "bg-[#182830] text-gray-400 border border-[#37464f] hover:text-white"
+          }`}
+        >
+          👥 Friends Only
+        </button>
       </div>
 
       {/* Period Selector Tabs */}
@@ -58,13 +81,17 @@ export default function LeaderboardPage() {
         <ErrorState
           title="Leaderboard Offline"
           message={error || "Could not load standings."}
-          onRetry={() => fetchLeaderboard(period)}
+          onRetry={() => fetchLeaderboard(period, scope)}
         />
       ) : data.entries.length === 0 ? (
         <Card className="p-8 text-center bg-[#182830] border-2 border-[#37464f] space-y-3">
           <div className="text-4xl">🌟</div>
           <h3 className="text-lg font-black text-white">No Leaderboard Entries Yet</h3>
-          <p className="text-xs text-gray-400">Be the first learner to complete a lesson and claim #1 rank!</p>
+          <p className="text-xs text-gray-400">
+            {scope === "friends"
+              ? "None of your friends have completed lessons for this period yet. Follow more friends!"
+              : "Be the first learner to complete a lesson and claim #1 rank!"}
+          </p>
         </Card>
       ) : (
         <div className="space-y-6">
@@ -91,7 +118,7 @@ export default function LeaderboardPage() {
                 <div>
                   <div className="text-xs text-gray-400 font-bold uppercase">Your Standing</div>
                   <div className="text-base font-black text-white">
-                    Ranked #{data.current_user_rank} of {data.total_participants}
+                    Ranked #{data.current_user_rank} of {data.total_participants} ({scope})
                   </div>
                 </div>
               </div>

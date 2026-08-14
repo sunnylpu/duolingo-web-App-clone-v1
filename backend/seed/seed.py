@@ -12,6 +12,7 @@ from app.modules.lesson.repository import LessonRepository
 from app.modules.progress.repository import ProgressRepository
 from app.modules.gamification.repository import GamificationRepository
 from app.modules.leaderboard.repository import LeaderboardRepository
+from app.modules.social.repository import SocialRepository
 
 from seed.generators.course_generator import generate_course
 from seed.catalogs import ALL_COURSE_SPECS
@@ -41,6 +42,7 @@ def seed_database(db: Session) -> dict:
     progress_repo = ProgressRepository(db)
     gamification_repo = GamificationRepository(db)
     leaderboard_repo = LeaderboardRepository(db)
+    social_repo = SocialRepository(db)
 
     counts = {
         "courses": 0,
@@ -51,9 +53,11 @@ def seed_database(db: Session) -> dict:
         "users": 0,
         "achievements": 0,
         "leaderboard_entries": 0,
+        "social_follows": 0,
+        "activity_events": 0,
     }
 
-    # 1. Seed Achievements (~28 achievements)
+    # 1. Seed Achievements (~29 achievements)
     for ach in ACHIEVEMENTS:
         gamification_repo.create_achievement(
             achievement_id=ach["id"],
@@ -222,6 +226,53 @@ def seed_database(db: Session) -> dict:
             rank=lb_usr["rank"],
         )
         counts["leaderboard_entries"] += 1
+
+        gamification_repo.create_or_update_user_stats(
+            stats_id=f"stats_{lb_usr['id']}",
+            user_id=lb_usr["id"],
+            total_xp=lb_usr["xp"],
+            current_streak=14 if lb_usr["id"] == "usr_polyglot" else 7,
+            longest_streak=20,
+            hearts=5,
+            gems=500,
+            daily_goal_xp=30,
+            daily_xp=40,
+        )
+
+    # 8. Seed Demo Social Follows & Activity Feed
+    social_repo.follow_user(follower_id=DEMO_USER["id"], following_id="usr_polyglot")
+    counts["social_follows"] += 1
+    social_repo.follow_user(follower_id=DEMO_USER["id"], following_id="usr_language_lover")
+    counts["social_follows"] += 1
+    social_repo.follow_user(follower_id="usr_polyglot", following_id=DEMO_USER["id"])
+    counts["social_follows"] += 1
+
+    social_repo.record_activity(
+        event_id="act_seed_1",
+        user_id="usr_polyglot",
+        event_type="streak_milestone",
+        message="reached a 14 Day Streak! 🔥",
+        metadata={"streak": 14},
+    )
+    counts["activity_events"] += 1
+
+    social_repo.record_activity(
+        event_id="act_seed_2",
+        user_id="usr_language_lover",
+        event_type="achievement_earned",
+        message="earned achievement '500 XP Crusader' 🌟",
+        metadata={"achievement_code": "500_XP"},
+    )
+    counts["activity_events"] += 1
+
+    social_repo.record_activity(
+        event_id="act_seed_3",
+        user_id=DEMO_USER["id"],
+        event_type="unit_completed",
+        message="completed Unit 1: Foundations 🏆",
+        metadata={"unit_title": "Foundations"},
+    )
+    counts["activity_events"] += 1
 
     logger.info("Database seeding completed successfully.")
     return counts

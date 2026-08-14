@@ -5,10 +5,11 @@ export const leaderboardService = {
   getLeaderboard: (
     period: LeaderboardPeriod = "weekly",
     limit: number = 20,
-    offset: number = 0
+    offset: number = 0,
+    scope: string = "global"
   ): Promise<LeaderboardResponse> =>
     apiClient.get<LeaderboardResponse>(
-      `/leaderboard?period=${period}&limit=${limit}&offset=${offset}`
+      `/leaderboard?period=${period}&scope=${scope}&limit=${limit}&offset=${offset}`
     ),
 
   getCurrentUserRank: (period: LeaderboardPeriod = "weekly"): Promise<UserRankResponse> =>

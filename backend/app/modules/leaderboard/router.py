@@ -16,14 +16,16 @@ def get_leaderboard_service(db: Session = Depends(get_db)) -> LeaderboardService
 @router.get("", response_model=LeaderboardResponse, summary="Get leaderboard standings")
 def get_leaderboard(
     period: str = Query("weekly", description="Leaderboard period: weekly, monthly, all_time"),
+    scope: str = Query("global", description="Leaderboard scope: global, friends"),
     limit: int = Query(20, ge=1, le=100, description="Max records to return"),
     offset: int = Query(0, ge=0, description="Record offset"),
     current_user: UserModel = Depends(get_current_user),
     service: LeaderboardService = Depends(get_leaderboard_service),
 ):
-    """Return ranked leaderboard standings for the specified period."""
+    """Return ranked leaderboard standings for the specified period and scope."""
     return service.get_leaderboard(
         period=period,
+        scope=scope,
         limit=limit,
         offset=offset,
         current_user_id=current_user.id,

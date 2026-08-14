@@ -1,0 +1,1769 @@
+# Phase 30 — Daily Quests + Missions + Challenge System
+
+**Hour 12 of the remaining roadmap**
+
+We now have a substantial platform:
+
+```text
+🇬🇧 English → 8 Units → 32 Skills → 96 Lessons → 576 Exercises
+🇪🇸 Spanish → 5 Units → 20 Skills → 60 Lessons → ~360 Exercises
+🇫🇷 French  → 3 Units → 12 Skills → 36 Lessons → ~216 Exercises
+```
+
+And the learner now has:
+
+```text
+Learning Path
+Course Switching
+Lesson Engine
+Hearts
+XP
+Streak
+Daily Goal
+Achievements
+Leaderboard
+Friends
+Smart Review
+Search
+Vocabulary Explorer
+Course/Unit Mastery
+```
+
+At this point, the next high-value feature should be a **daily mission layer**.
+
+Why?
+
+Because the learner currently has to decide:
+
+> "What should I do today?"
+
+A mature gamified learning product answers:
+
+> "Here are today's missions."
+
+---
+
+# Phase 30 objective
+
+Build:
+
+```text
+🎯 Daily Quests
+🏆 Weekly Challenge
+🔥 Streak Challenge
+⭐ XP Challenge
+📚 Learning Challenge
+```
+
+The learner should see:
+
+```text id="8z1f2k"
+Today's Quests
+
+○ Complete 2 lessons        1 / 2
+○ Earn 30 XP               20 / 30
+○ Get 10 correct answers    7 / 10
+
+[ START ]
+```
+
+And optionally:
+
+```text
+🏆 Weekly Challenge
+
+Complete 10 lessons
+
+7 / 10
+```
+
+---
+
+# 1. Quest architecture
+
+Create a new domain:
+
+```text id="d8b8t5"
+backend/app/modules/quests/
+├── router.py
+├── service.py
+├── repository.py
+├── models.py
+├── schemas.py
+└── tests/
+```
+
+Keep it separate from achievements.
+
+Why?
+
+```text
+Achievement
+→ permanent milestone
+
+Quest
+→ temporary objective
+```
+
+---
+
+# 2. Quest model
+
+Create something like:
+
+```text id="j8j3yu"
+Quest
+----------------
+id
+code
+title
+description
+quest_type
+target_value
+reward_xp
+course_id nullable
+active_from
+active_until
+```
+
+And a learner state:
+
+```text id="hsriqg"
+UserQuest
+----------------
+id
+user_id
+quest_id
+current_value
+completed
+completed_at
+```
+
+Unique:
+
+```text id="t5j0c9"
+(user_id, quest_id)
+```
+
+---
+
+# 3. Quest types
+
+Start with a small but useful set:
+
+```text id="m3p1z0"
+LESSONS_COMPLETED
+XP_EARNED
+CORRECT_ANSWERS
+SKILLS_COMPLETED
+REVIEWS_COMPLETED
+```
+
+Examples:
+
+```text id="1o9s2w"
+Complete 2 lessons
+
+Earn 30 XP
+
+Answer 10 questions correctly
+
+Complete 1 skill
+
+Complete 3 review exercises
+```
+
+---
+
+# 4. Daily quest generation
+
+Each day generate **3 quests** per learner.
+
+Example:
+
+```text id="b77q9b"
+Quest 1:
+Complete 2 lessons
+Reward: +20 XP
+
+Quest 2:
+Earn 30 XP
+Reward: +15 XP
+
+Quest 3:
+Answer 10 correctly
+Reward: +20 XP
+```
+
+Do not generate them randomly every API request.
+
+They must be stable for the day.
+
+---
+
+# 5. Deterministic daily quests
+
+Use the user's:
+
+```text id="9x6w3e"
+user_id
++
+date
+```
+
+to deterministically select/generate that day's quests.
+
+This prevents:
+
+```text id="n8g8fk"
+refresh page
+→ quests change
+```
+
+The same day should show the same missions.
+
+---
+
+# 6. Daily reset
+
+Don't use a frontend midnight timer.
+
+Use the backend's existing application timezone:
+
+```text id="4wz1oa"
+APP_TIMEZONE
+```
+
+When the date changes:
+
+```text id="4g9o4s"
+new DailyActivity
+→ new daily quests
+```
+
+No cron job is required for the MVP.
+
+---
+
+# 7. Quest progress
+
+Quest progress should update automatically based on existing events.
+
+For example:
+
+```text id="nyk1zj"
+Lesson completed
+      ↓
+LESSONS_COMPLETED += 1
+XP_EARNED += lesson XP
+```
+
+And:
+
+```text id="g0zgpf"
+Correct exercise
+      ↓
+CORRECT_ANSWERS += 1
+```
+
+Don't ask the frontend to call:
+
+```text id="9y0g1c"
+POST /quests/progress
+```
+
+after every action.
+
+The backend should derive quest progress from the actual domain event.
+
+---
+
+# 8. Quest completion
+
+When:
+
+```text id="jsc8ku"
+current_value >= target_value
+```
+
+set:
+
+```text id="c0yuo8"
+completed = true
+```
+
+and award:
+
+```text id="i0n5hr"
+reward_xp
+```
+
+exactly once.
+
+---
+
+# 9. Prevent quest reward duplication
+
+Critical.
+
+Example:
+
+```text id="8c9x5u"
+Quest target = 2 lessons
+
+Lesson 1
+→ 1 / 2
+
+Lesson 2
+→ 2 / 2
+→ +20 XP
+
+retry same completion
+→ +0
+```
+
+Use:
+
+```text id="gv2f9z"
+UserQuest.completed
++
+database constraints
+```
+
+---
+
+# 10. Quest reward transaction
+
+When an action completes a quest:
+
+```text id="uq2r27"
+BEGIN
+
+complete lesson
+update XP
+update daily activity
+update quests
+award quest XP
+
+COMMIT
+```
+
+This keeps quest progress consistent with the event that caused it.
+
+---
+
+# 11. Weekly challenge
+
+Create a second layer:
+
+```text id="8h1k4g"
+Weekly Challenge
+```
+
+Example:
+
+```text id="7twcya"
+🏆 Weekly Challenge
+
+Complete 10 lessons
+
+7 / 10
+
+Reward:
++100 XP
+```
+
+One active weekly challenge is enough for this phase.
+
+---
+
+# 12. Weekly challenge model
+
+You can reuse:
+
+```text id="qu6yq6"
+Quest
+```
+
+with:
+
+```text id="quest_scope"
+daily
+weekly
+```
+
+rather than creating a completely separate table.
+
+This keeps the model simple.
+
+---
+
+# 13. Course-aware quests
+
+Daily quests should optionally respect the selected course.
+
+Example:
+
+```text id="i4x7ry"
+Selected course: Spanish
+
+Complete 2 Spanish lessons
+```
+
+But don't force every quest to be course-specific.
+
+Use:
+
+```text id="2y22i1"
+global quests
+```
+
+and:
+
+```text id="e8yn3g"
+course-specific quests
+```
+
+mixed carefully.
+
+---
+
+# 14. Quest API
+
+Create:
+
+```text id="v4z6m8"
+GET /api/v1/quests/today
+```
+
+Response:
+
+```json id="77f2aj"
+{
+  "date": "2026-08-14",
+  "quests": [
+    {
+      "id": 1,
+      "title": "Complete 2 lessons",
+      "current": 1,
+      "target": 2,
+      "reward_xp": 20,
+      "completed": false
+    }
+  ]
+}
+```
+
+And:
+
+```text id="j3u5hb"
+GET /api/v1/quests/weekly
+```
+
+---
+
+# 15. No manual quest-progress endpoint
+
+Avoid:
+
+```text id="0z3s7l"
+POST /quests/update
+```
+
+The frontend should only read quest state.
+
+Domain actions update it automatically.
+
+---
+
+# 16. Quest UI
+
+Create:
+
+```text id="6a6wep"
+frontend/features/quests/
+├── components/
+│   ├── DailyQuestCard.tsx
+│   ├── DailyQuestList.tsx
+│   ├── QuestProgress.tsx
+│   ├── WeeklyChallenge.tsx
+│   └── QuestCompleteModal.tsx
+├── hooks/
+│   └── useQuests.ts
+└── services/
+    └── quest-service.ts
+```
+
+---
+
+# 17. Daily quest card
+
+Example:
+
+```text id="h2h2p9"
+Today's Quests
+
+┌────────────────────────────────┐
+│ 📚 Complete 2 lessons          │
+│ ██████████░░░░ 1 / 2          │
+│ +20 XP                         │
+└────────────────────────────────┘
+
+┌────────────────────────────────┐
+│ ⭐ Earn 30 XP                  │
+│ █████████████░ 20 / 30        │
+│ +15 XP                         │
+└────────────────────────────────┘
+```
+
+---
+
+# 18. Quest completion animation
+
+When completed:
+
+```text id="p6p4j4"
+✓ Quest Complete!
+
++20 XP
+```
+
+Use the existing reward queue rather than inventing another modal framework.
+
+---
+
+# 19. Home dashboard integration
+
+The Home page should now have:
+
+```text id="c4mtjv"
+Continue Learning
+
+Daily Goal
+
+Today's Quests
+
+Smart Review
+
+Your Courses
+```
+
+Quest cards should be visible but not dominate the screen.
+
+---
+
+# 20. Profile integration
+
+Add:
+
+```text id="urpyx6"
+Quest Statistics
+
+42 quests completed
+8 weekly challenges completed
+```
+
+Only if the data is easy to calculate.
+
+Don't introduce unnecessary analytics tables.
+
+---
+
+# 21. Quest + streak interaction
+
+Completing quests does not directly increase streak.
+
+The rule remains:
+
+```text id="l54w0q"
+Learning activity
+→ streak
+
+Quest completion
+→ reward XP
+```
+
+The quest is observing learning behavior.
+
+---
+
+# 22. Quest + achievements
+
+This is where the systems become interesting.
+
+You can later have achievements like:
+
+```text id="6z3m20"
+QUEST_STARTER
+Complete 10 daily quests
+
+QUEST_MASTER
+Complete 50 daily quests
+```
+
+For this phase, the data model should make this possible, but don't needlessly expand the achievement catalog again.
+
+---
+
+# 23. Quest + leaderboard
+
+Quest rewards become XP.
+
+Therefore:
+
+```text id="b8jjsn"
+Quest completed
+→ +XP
+→ DailyActivity
+→ leaderboard XP
+```
+
+This happens automatically through the existing XP/gamification flow.
+
+Do not create:
+
+```text id="0t4j4f"
+POST leaderboard/update
+```
+
+---
+
+# 24. Quest difficulty
+
+Daily quest targets should stay achievable.
+
+Examples:
+
+```text id="u7y6zq"
+Beginner learner:
+2 lessons
+20 XP
+
+Advanced learner:
+3 lessons
+40 XP
+```
+
+You may choose one deterministic difficulty based on learner level.
+
+Don't make quests impossible.
+
+---
+
+# 25. Quest personalization
+
+Use the learner's current activity where practical.
+
+For example, if the learner is actively learning Spanish:
+
+```text id="w7rv4j"
+Complete 2 Spanish lessons
+```
+
+But avoid highly complex personalization.
+
+A simple rule:
+
+```text id="fqz2i0"
+selected course → course-specific quest
+```
+
+is sufficient.
+
+---
+
+# 26. Quest expiration
+
+Daily:
+
+```text id="7zwtaj"
+expires at next application day
+```
+
+Weekly:
+
+```text id="b8bq2f"
+expires at end of week
+```
+
+Completed quests remain visible as historical completion for the period.
+
+---
+
+# 27. Quest history
+
+Optional but useful:
+
+```text id="mbouu0"
+GET /api/v1/quests/history
+```
+
+Return recent completed quests.
+
+Example:
+
+```text id="k6jw39"
+Yesterday:
+✓ Complete 2 lessons
+✓ Earn 30 XP
+
+Monday:
+✓ Complete 3 reviews
+```
+
+Keep it limited to recent history.
+
+---
+
+# 28. Backend tests
+
+Test:
+
+```text id="xql1mu"
+daily quests stable for same date
+new day creates new quests
+quest progress updates
+quest completion
+quest XP
+duplicate completion
+weekly challenge
+course-specific quest
+global quest
+timezone behavior
+```
+
+---
+
+# 29. Integration tests
+
+Test:
+
+```text id="o6t9n6"
+Complete lesson
+→ quest progress changes
+
+Answer correctly
+→ correct-answer quest changes
+
+Earn XP
+→ XP quest changes
+
+Complete quest
+→ XP increases
+
+Leaderboard reflects earned XP
+```
+
+This demonstrates the event flow.
+
+---
+
+# 30. Frontend tests
+
+Test:
+
+```text id="crj20v"
+quest cards
+progress
+completion state
+weekly challenge
+loading
+error
+home integration
+```
+
+---
+
+# 31. E2E journey
+
+Create one impressive E2E:
+
+```text id="k8aeyp"
+Open Home
+↓
+See 3 Daily Quests
+↓
+Start lesson
+↓
+Complete lesson
+↓
+Quest progress increases
+↓
+Earn enough XP
+↓
+Quest completes
+↓
++Quest XP
+↓
+Quest becomes ✓ Complete
+```
+
+This is an excellent demo scenario.
+
+---
+
+# 32. Phase 30 acceptance criteria
+
+```text id="e9x8xs"
+[ ] Quest module exists
+[ ] Daily quest model exists
+[ ] UserQuest progress exists
+[ ] Daily quest generation is deterministic
+[ ] Daily quests remain stable throughout the day
+[ ] Daily quests reset on new application date
+[ ] Weekly challenge exists
+[ ] Quest progress updates from real domain events
+[ ] Frontend cannot manually manipulate quest progress
+[ ] Quest completion awards XP exactly once
+[ ] Quest XP flows into existing gamification
+[ ] Quest XP flows into leaderboard activity
+[ ] Course-specific quests are supported
+[ ] Daily quest API works
+[ ] Weekly challenge API works
+[ ] Quest UI works
+[ ] Quest completion feedback works
+[ ] Home dashboard integrates quests
+[ ] Backend tests pass
+[ ] Frontend tests/build pass
+[ ] Integration tests pass
+[ ] E2E quest journey passes
+```
+
+---
+
+# What Phase 30 does NOT implement
+
+```text id="gzgrb2"
+❌ Real notifications
+❌ Push notifications
+❌ Chat
+❌ ML personalization
+❌ AI-generated quests
+❌ Payments
+❌ Authentication
+❌ Docker
+❌ Jenkins
+❌ Kubernetes
+❌ AWS
+```
+
+---
+
+## Product result after Hour 12
+
+The daily user loop now becomes:
+
+```text id="4p4h2m"
+              OPEN APP
+                  │
+                  ▼
+             DAILY QUESTS
+                  │
+        ┌─────────┼─────────┐
+        ▼         ▼         ▼
+      LEARN     REVIEW   PRACTICE
+        │         │         │
+        └─────────┼─────────┘
+                  ▼
+                 XP
+                  │
+        ┌─────────┼──────────┐
+        ▼         ▼          ▼
+      STREAK   ACHIEVEMENT  LEADERBOARD
+                  │
+                  ▼
+              MORE GOALS
+```
+
+This is a particularly valuable addition because it creates a **daily gameplay loop** without introducing an unnecessary new technical platform.
+# Phase 31 — Notifications + Reminder System + Daily Engagement
+
+**Hour 13 of the remaining roadmap**
+
+We now have a strong daily loop:
+
+```text
+Home
+ ↓
+Daily Quests
+ ↓
+Learn / Review
+ ↓
+XP
+ ↓
+Streak
+ ↓
+Achievements
+ ↓
+Leaderboard
+```
+
+But the learner still has to **remember to come back**.
+
+Phase 31 adds a lightweight notification/reminder system without introducing push infrastructure yet.
+
+The goal is:
+
+```text
+🔔 Daily reminder
+🔥 Streak reminder
+🎯 Quest reminder
+🏆 Achievement notification
+📚 Course progress reminder
+```
+
+The system should be designed so that later, when we deploy on AWS, it can evolve into email/push notifications without rewriting the core domain.
+
+---
+
+# 1. Notification architecture
+
+Create:
+
+```text id="f65x9j"
+backend/app/modules/notifications/
+├── router.py
+├── service.py
+├── repository.py
+├── models.py
+├── schemas.py
+└── tests/
+```
+
+Responsibilities:
+
+```text id="q1z3ue"
+notification creation
+notification retrieval
+read/unread state
+notification preferences
+reminder scheduling metadata
+```
+
+Do not put streak or XP logic here.
+
+Notifications observe events generated by other domains.
+
+---
+
+# 2. Notification model
+
+Create:
+
+```text id="8rxr0m"
+Notification
+----------------
+id
+user_id
+type
+title
+message
+metadata
+is_read
+created_at
+```
+
+Potential notification types:
+
+```text id="7h1pn9"
+DAILY_REMINDER
+STREAK_REMINDER
+QUEST_REMINDER
+ACHIEVEMENT_UNLOCKED
+UNIT_COMPLETED
+COURSE_COMPLETED
+SOCIAL_ACTIVITY
+```
+
+Use JSON metadata for contextual data.
+
+Example:
+
+```json id="x8g0tq"
+{
+  "course_id": "crs_english",
+  "skill_id": "skill_questions"
+}
+```
+
+---
+
+# 3. Notification API
+
+Create:
+
+```text id="f0h3x8"
+GET /api/v1/notifications
+```
+
+Optional:
+
+```text id="95y1f4"
+?unread_only=true
+?limit=20
+```
+
+Response:
+
+```json id="xj0j8g"
+{
+  "items": [
+    {
+      "id": 101,
+      "type": "ACHIEVEMENT_UNLOCKED",
+      "title": "Achievement Unlocked!",
+      "message": "You earned 7 Day Streak",
+      "is_read": false,
+      "created_at": "..."
+    }
+  ],
+  "unread_count": 1
+}
+```
+
+---
+
+# 4. Mark notification read
+
+Implement:
+
+```text id="q2o7g7"
+POST /api/v1/notifications/{id}/read
+```
+
+The current user must own the notification.
+
+Do not accept arbitrary:
+
+```text id="9u9r2v"
+user_id
+```
+
+from the frontend.
+
+---
+
+# 5. Mark all read
+
+Useful:
+
+```text id="bm6y6e"
+POST /api/v1/notifications/read-all
+```
+
+This should only affect the current user's notifications.
+
+---
+
+# 6. Notification preferences
+
+Create:
+
+```text id="ij3v7d"
+NotificationPreference
+----------------
+user_id
+daily_reminders
+streak_reminders
+quest_reminders
+social_notifications
+achievement_notifications
+```
+
+One row per user.
+
+Default:
+
+```text id="wr8mzw"
+all enabled
+```
+
+---
+
+# 7. Preferences API
+
+Implement:
+
+```text id="6x9l1t"
+GET /api/v1/notifications/preferences
+PATCH /api/v1/notifications/preferences
+```
+
+Example:
+
+```json id="2n5n0m"
+{
+  "daily_reminders": true,
+  "streak_reminders": true,
+  "quest_reminders": true,
+  "social_notifications": false,
+  "achievement_notifications": true
+}
+```
+
+This makes your future notification system configurable.
+
+---
+
+# 8. Important: no fake background scheduler
+
+Do **not** build:
+
+```text id="8grx94"
+Celery
+Redis
+cron
+Kafka
+```
+
+yet.
+
+We're still preparing the product.
+
+Instead create:
+
+```text id="3o2dqr"
+ReminderCandidate
+```
+
+or a service that can determine:
+
+```text id="3x4mqp"
+who should be reminded
+```
+
+Later Jenkins/AWS can invoke it.
+
+---
+
+# 9. Reminder eligibility service
+
+Create:
+
+```text id="l0eqxg"
+notifications/reminder_service.py
+```
+
+Functions:
+
+```text id="0d5jws"
+get_daily_reminder_candidates()
+get_streak_reminder_candidates()
+get_quest_reminder_candidates()
+```
+
+These return users who are eligible.
+
+---
+
+# 10. Daily reminder rule
+
+Simple rule:
+
+```text id="j7xk3c"
+user has no learning activity today
++
+daily_reminders enabled
+→ candidate
+```
+
+Do not send multiple reminders every time the API is called.
+
+Use a reminder record/idempotency mechanism.
+
+---
+
+# 11. Streak reminder rule
+
+If:
+
+```text id="4g4s4v"
+current streak > 0
++
+no activity today
+```
+
+then:
+
+```text id="5c8o0v"
+streak reminder candidate
+```
+
+Example message:
+
+```text id="v1ae7f"
+🔥 Your 12-day streak is waiting!
+
+Complete a lesson today to keep it alive.
+```
+
+---
+
+# 12. Quest reminder rule
+
+If:
+
+```text id="q6h3xg"
+daily quests incomplete
++
+quest_reminders enabled
+```
+
+then:
+
+```text id="87ckk3"
+quest reminder candidate
+```
+
+Example:
+
+```text id="p4sv5k"
+🎯 You still have 2 quests left today.
+```
+
+---
+
+# 13. Achievement notification
+
+When an achievement is earned:
+
+```text id="t3h1ry"
+AchievementEngine
+   ↓
+NotificationService
+```
+
+Create:
+
+```text id="x9jpsu"
+ACHIEVEMENT_UNLOCKED
+```
+
+This should happen as part of the existing lesson/reward transaction where appropriate.
+
+---
+
+# 14. Unit/course completion notifications
+
+When a unit completes:
+
+```text id="1e9jzo"
+🎉 Unit Complete!
+
+You completed Foundations.
+```
+
+When a course completes:
+
+```text id="2y8drq"
+🎓 English Mastery Complete!
+
+You finished the English course.
+```
+
+Again, notification creation should be tied to real backend events.
+
+---
+
+# 15. Social notifications
+
+When someone you follow achieves something significant:
+
+```text id="z0aplc"
+Alex completed Unit 3.
+```
+
+Keep social notifications limited.
+
+Do not notify on:
+
+```text id="v6yrj4"
+every lesson
+every exercise
+every XP change
+```
+
+That would create noise.
+
+---
+
+# 16. Notification frontend
+
+Create:
+
+```text id="j2a0q5"
+frontend/features/notifications/
+├── components/
+│   ├── NotificationBell.tsx
+│   ├── NotificationPanel.tsx
+│   ├── NotificationItem.tsx
+│   └── NotificationPreferences.tsx
+├── hooks/
+│   └── useNotifications.ts
+└── services/
+    └── notification-service.ts
+```
+
+---
+
+# 17. Notification bell
+
+Add to header:
+
+```text id="7q5hcl"
+🔔
+```
+
+Unread:
+
+```text id="0f6n4c"
+🔔 3
+```
+
+or a small badge:
+
+```text id="b0g7tj"
+🔴 3
+```
+
+Don't rely solely on red color.
+
+Use accessible text:
+
+```text id="3n81h7"
+3 unread notifications
+```
+
+---
+
+# 18. Notification panel
+
+Example:
+
+```text id="6d0zva"
+┌─────────────────────────────────────┐
+│ Notifications                  ✓    │
+├─────────────────────────────────────┤
+│ 🏆 Achievement Unlocked             │
+│ 7 Day Streak                        │
+│ 2h ago                              │
+│                                     │
+│ 🎯 Daily Quest                      │
+│ Complete 1 more lesson              │
+│ 5h ago                              │
+│                                     │
+│ 🔥 Streak Reminder                  │
+│ Keep your 12 day streak             │
+└─────────────────────────────────────┘
+```
+
+---
+
+# 19. Read state
+
+Unread:
+
+```text id="f6vlwq"
+bold
+badge
+```
+
+Read:
+
+```text id="a7m4nt"
+normal
+```
+
+Clicking a notification:
+
+```text id="0a1u0k"
+marks it read
+```
+
+and optionally navigates to the relevant object.
+
+---
+
+# 20. Deep-link metadata
+
+Notifications should carry enough metadata to navigate.
+
+Examples:
+
+```text id="xj0ypo"
+achievement:
+achievement_code
+
+unit:
+course_id
+unit_id
+
+lesson:
+course_id
+lesson_id
+
+social:
+user_id
+```
+
+The frontend maps these to known application routes.
+
+---
+
+# 21. No notification duplication
+
+Important.
+
+If:
+
+```text id="nmtf44"
+Achievement unlocked
+```
+
+already produced a notification, don't produce another one because of a retry.
+
+Use an idempotency key such as:
+
+```text id="7zj2ka"
+user_id
+event_type
+entity_type
+entity_id
+```
+
+where appropriate.
+
+---
+
+# 22. Notification preference UX
+
+Add under Settings:
+
+```text id="b1ko2j"
+Notifications
+
+☑ Daily reminders
+☑ Streak reminders
+☑ Quest reminders
+☑ Achievement notifications
+☐ Social notifications
+```
+
+Use real backend preferences.
+
+---
+
+# 23. Settings page
+
+The previous Settings placeholder can now become useful.
+
+Keep it lightweight:
+
+```text id="9xg8ey"
+Profile
+Notifications
+Appearance
+Language
+```
+
+Only Notifications is functional now.
+
+Everything else can remain placeholder.
+
+---
+
+# 24. Reminder scheduling API
+
+You don't need a public endpoint that lets the browser say:
+
+```text id="zq4r0x"
+send me a reminder now
+```
+
+Instead the backend should expose an internal/service-level method.
+
+Conceptually:
+
+```text id="3mk6s9"
+NotificationService.generate_daily_reminders()
+```
+
+Later:
+
+```text id="m2gcd0"
+AWS EventBridge / CloudWatch
+→ invoke reminder job
+```
+
+This keeps today's code cloud-ready.
+
+---
+
+# 25. Reminder deduplication
+
+Create a simple record:
+
+```text id="k7lh7m"
+NotificationDelivery
+--------------------
+id
+user_id
+notification_type
+reference_date
+created_at
+```
+
+Unique:
+
+```text id="4m3t1y"
+(user_id, notification_type, reference_date)
+```
+
+For example:
+
+```text id="v1erj0"
+Sunny
+STREAK_REMINDER
+2026-08-14
+```
+
+can only be generated once that day.
+
+---
+
+# 26. Local testing endpoint
+
+For development only, you can add:
+
+```text id="2sqc4k"
+POST /api/v1/dev/notifications/generate
+```
+
+but **do not expose this in production**.
+
+Better: use a Python CLI:
+
+```bash id="7b9xwi"
+python -m notifications.generate_reminders
+```
+
+This is safer and will later map nicely into a deployment job.
+
+---
+
+# 27. Notifications + quest system
+
+Daily quests can produce:
+
+```text id="4vxy3a"
+QUEST_REMINDER
+```
+
+and:
+
+```text id="5g7r7g"
+QUEST_COMPLETED
+```
+
+Don't generate a notification for every quest progress increment.
+
+Only:
+
+```text id="5k5a2j"
+important milestone
+```
+
+---
+
+# 28. Notifications + streak
+
+When a streak is about to be lost:
+
+```text id="mkvbux"
+Streak reminder
+```
+
+When a milestone is achieved:
+
+```text id="8t3g2l"
+Streak milestone
+```
+
+These are separate events.
+
+---
+
+# 29. Notification history
+
+The user should be able to scroll older notifications:
+
+```text id="0zqjca"
+Today
+Yesterday
+Earlier
+```
+
+Use pagination.
+
+No need to load thousands of rows at once.
+
+---
+
+# 30. Testing — notification engine
+
+Backend:
+
+```text id="2rdj2u"
+create notification
+read notification
+read all
+preferences
+daily reminder eligibility
+streak reminder eligibility
+quest reminder eligibility
+achievement notification
+unit notification
+course notification
+deduplication
+ownership
+```
+
+---
+
+# 31. Testing — reminder rules
+
+Test:
+
+```text id="jq5k9u"
+no activity today
+→ daily reminder candidate
+
+activity today
+→ no daily reminder
+
+streak > 0 + no activity
+→ streak candidate
+
+quest incomplete
+→ quest candidate
+
+all quests completed
+→ no quest reminder
+```
+
+---
+
+# 32. Frontend tests
+
+Test:
+
+```text id="t4k9a6"
+bell
+unread badge
+notification panel
+read notification
+read all
+preferences
+navigation
+empty state
+```
+
+---
+
+# 33. E2E notification journey
+
+Test:
+
+```text id="1qj529"
+create seeded unread notification
+↓
+open app
+↓
+bell shows badge
+↓
+open panel
+↓
+click notification
+↓
+notification becomes read
+```
+
+This proves the system is functional without needing real push infrastructure.
+
+---
+
+# 34. Phase 31 acceptance criteria
+
+```text id="d8d3l4"
+[ ] Notification module exists
+[ ] Notification model exists
+[ ] User preferences exist
+[ ] Notification API works
+[ ] Mark-read works
+[ ] Mark-all-read works
+[ ] Unread count works
+[ ] Notification bell works
+[ ] Notification panel works
+[ ] Daily reminder eligibility works
+[ ] Streak reminder eligibility works
+[ ] Quest reminder eligibility works
+[ ] Achievement notification works
+[ ] Unit notification works
+[ ] Course notification works
+[ ] Notification deduplication works
+[ ] Notification ownership is enforced
+[ ] Settings notifications are functional
+[ ] Reminder logic uses application timezone
+[ ] No background scheduler is required for current MVP
+[ ] Future scheduler integration point exists
+[ ] Backend tests pass
+[ ] Frontend tests/build pass
+[ ] E2E notification flow passes
+```
+
+---
+
+# What this phase does NOT implement
+
+```text id="hmf1oj"
+❌ Firebase
+❌ Web Push
+❌ Email provider
+❌ SMS
+❌ AWS EventBridge implementation
+❌ Celery
+❌ Redis
+❌ Kafka
+❌ Real-time WebSockets
+❌ Authentication
+❌ Docker
+❌ Jenkins
+❌ Kubernetes
+❌ AWS
+```
+
+## Result after Hour 13
+
+The learner lifecycle becomes:
+
+```text id="uyn3v6"
+                    LEARNER
+                       │
+                       ▼
+                    ACTIVITY
+                       │
+       ┌───────────────┼────────────────┐
+       ▼               ▼                ▼
+     Quests         Streak          Achievements
+       │               │                │
+       └───────────────┼────────────────┘
+                       ▼
+                 Notifications
+                       │
+             ┌─────────┴─────────┐
+             ▼                   ▼
+         Come back            Continue
+```
+
+This is the last major **engagement** layer I'd add before we shift toward technical production work. The next hour should start tightening the architecture around **observability, audit trails, API health, and production-grade operational tooling** rather than adding endless UI features.
+

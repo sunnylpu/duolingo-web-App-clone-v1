@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.modules.leaderboard.repository import LeaderboardRepository
+from app.modules.social.repository import SocialRepository
 from app.modules.user.models import UserModel
 from app.modules.gamification.models import UserStatsModel
 from app.modules.progress.models import DailyActivityModel
@@ -23,25 +24,28 @@ class LeaderboardService:
     def __init__(self, db: Session):
         self.db = db
         self.repository = LeaderboardRepository(db)
+        self.social_repository = SocialRepository(db)
 
     def _calculate_ranked_entries(
-        self, period: str, current_user_id: Optional[str] = None
+        self, period: str, current_user_id: Optional[str] = None, scope: str = "global"
     ) -> List[Dict[str, Any]]:
-        """
-        Calculates ranked entries based on period activity or cumulative XP using
-        Standard Competition Ranking (1224 rank).
-        """
         today = get_current_activity_date()
 
-        # Fetch all active users in the platform
-        all_users = self.db.query(UserModel).all()
+        user_query = self.db.query(UserModel)
+        if scope == "friends" and current_user_id:
+            following_ids = self.social_repository.get_following_ids(current_user_id)
+            friend_user_ids = set(following_ids + [current_user_id])
+            user_query = user_query.filter(UserModel.id.in_(friend_user_ids))
+
+        all_users = user_query.all()
         user_map = {u.id: u for u in all_users}
 
         xp_map: Dict[str, int] = {}
 
         if period == "all_time":
-            # Use UserStats.total_xp as authoritative cumulative XP
-            all_stats = self.db.query(UserStatsModel).all()
+            all_stats = self.db.query(UserStatsModel).filter(
+                UserStatsModel.user_id.in_(user_map.keys()) if user_map else True
+            ).all()
             for st in all_stats:
                 xp_map[st.user_id] = st.total_xp
             for u_id in user_map:
@@ -53,13 +57,15 @@ class LeaderboardService:
             else:  # monthly
                 start_date = today.replace(day=1)
 
-            # Sum DailyActivity.xp_earned for activity_date >= start_date
             activity_sums = (
                 self.db.query(
                     DailyActivityModel.user_id,
                     func.sum(DailyActivityModel.xp_earned).label("period_xp"),
                 )
-                .filter(DailyActivityModel.activity_date >= start_date)
+                .filter(
+                    DailyActivityModel.activity_date >= start_date,
+                    DailyActivityModel.user_id.in_(user_map.keys()) if user_map else True,
+                )
                 .group_by(DailyActivityModel.user_id)
                 .all()
             )
@@ -67,12 +73,10 @@ class LeaderboardService:
             for u_id, period_xp in activity_sums:
                 xp_map[u_id] = int(period_xp or 0)
 
-            # Ensure all users are represented
             for u_id in user_map:
                 if u_id not in xp_map:
                     xp_map[u_id] = 0
 
-        # Sort users by XP DESC, then by display_name ASC for deterministic order
         sorted_user_ids = sorted(
             xp_map.keys(),
             key=lambda uid: (
@@ -81,10 +85,8 @@ class LeaderboardService:
             ),
         )
 
-        # Standard Competition Ranking Algorithm (1224 rank)
         ranked_list: List[Dict[str, Any]] = []
         prev_xp: Optional[int] = None
-        current_rank = 1
 
         for idx, u_id in enumerate(sorted_user_ids):
             user_xp = xp_map[u_id]
@@ -113,6 +115,7 @@ class LeaderboardService:
     def get_leaderboard(
         self,
         period: str = "weekly",
+        scope: str = "global",
         limit: int = 20,
         offset: int = 0,
         current_user_id: Optional[str] = None,
@@ -126,7 +129,9 @@ class LeaderboardService:
         limit_clean = max(1, min(100, limit))
         offset_clean = max(0, offset)
 
-        ranked_all = self._calculate_ranked_entries(period_clean, current_user_id)
+        ranked_all = self._calculate_ranked_entries(
+            period=period_clean, current_user_id=current_user_id, scope=scope.lower()
+        )
         total_participants = len(ranked_all)
 
         current_user_rank = None
