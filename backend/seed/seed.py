@@ -53,7 +53,7 @@ def seed_database(db: Session) -> dict:
         "leaderboard_entries": 0,
     }
 
-    # 1. Seed Achievements
+    # 1. Seed Achievements (~28 achievements)
     for ach in ACHIEVEMENTS:
         gamification_repo.create_achievement(
             achievement_id=ach["id"],
@@ -63,6 +63,10 @@ def seed_database(db: Session) -> dict:
             icon=ach["icon"],
             requirement_type=ach["requirement_type"],
             requirement_value=ach["requirement_value"],
+            category=ach.get("category", "learning"),
+            course_id=ach.get("course_id"),
+            rarity=ach.get("rarity", "common"),
+            xp_reward=ach.get("xp_reward", 0),
         )
         counts["achievements"] += 1
 

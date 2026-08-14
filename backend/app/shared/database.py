@@ -1,6 +1,6 @@
 import os
 from typing import Generator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 from app.config import settings
 
@@ -45,6 +45,8 @@ def init_db(target_engine=None) -> None:
         LessonAttemptModel,
         ExerciseAttemptModel,
         DailyActivityModel,
+        UnitMilestoneModel,
+        CourseMilestoneModel,
     )
     from app.modules.gamification.models import (  # noqa: F401
         UserStatsModel,
@@ -55,6 +57,23 @@ def init_db(target_engine=None) -> None:
 
     exec_engine = target_engine if target_engine is not None else engine
     Base.metadata.create_all(bind=exec_engine)
+
+    # Safe lightweight schema migration for newly added columns
+    try:
+        inspector = inspect(exec_engine)
+        if "achievements" in inspector.get_table_names():
+            columns = {c["name"] for c in inspector.get_columns("achievements")}
+            with exec_engine.begin() as conn:
+                if "category" not in columns:
+                    conn.execute(text("ALTER TABLE achievements ADD COLUMN category VARCHAR DEFAULT 'learning'"))
+                if "course_id" not in columns:
+                    conn.execute(text("ALTER TABLE achievements ADD COLUMN course_id VARCHAR"))
+                if "rarity" not in columns:
+                    conn.execute(text("ALTER TABLE achievements ADD COLUMN rarity VARCHAR DEFAULT 'common'"))
+                if "xp_reward" not in columns:
+                    conn.execute(text("ALTER TABLE achievements ADD COLUMN xp_reward INTEGER DEFAULT 0"))
+    except Exception as e:
+        pass
 
 
 def get_db() -> Generator[Session, None, None]:

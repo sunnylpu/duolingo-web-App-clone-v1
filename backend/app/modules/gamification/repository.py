@@ -67,6 +67,10 @@ class GamificationRepository:
         icon: str,
         requirement_type: str,
         requirement_value: int,
+        category: str = "learning",
+        course_id: Optional[str] = None,
+        rarity: str = "common",
+        xp_reward: int = 0,
     ) -> AchievementModel:
         achievement = self.get_achievement_by_code(code)
         if not achievement:
@@ -76,12 +80,22 @@ class GamificationRepository:
                 name=name,
                 description=description,
                 icon=icon,
+                category=category,
                 requirement_type=requirement_type,
                 requirement_value=requirement_value,
+                course_id=course_id,
+                rarity=rarity,
+                xp_reward=xp_reward,
             )
             self.db.add(achievement)
             self.db.commit()
             self.db.refresh(achievement)
+        else:
+            achievement.category = category
+            achievement.course_id = course_id
+            achievement.rarity = rarity
+            achievement.xp_reward = xp_reward
+            self.db.commit()
         return achievement
 
     def grant_user_achievement(

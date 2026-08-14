@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.shared.database import get_db
@@ -31,15 +31,6 @@ def get_gamification_stats(
 ):
     """Return total XP, streaks, hearts, heart regeneration info, gems, and daily progress."""
     return service.get_user_stats(current_user)
-
-
-@router.get("/daily", response_model=DailyActivityResponse, summary="Get today's activity and goal progress")
-def get_today_activity(
-    current_user: UserModel = Depends(get_current_user),
-    service: GamificationService = Depends(get_gamification_service),
-):
-    """Return today's date, XP earned, lessons completed, and daily goal completion status."""
-    return service.get_today_activity(current_user)
 
 
 @router.get("/practice", response_model=PracticeExerciseResponse, summary="Get practice exercise for heart recovery")
@@ -75,15 +66,19 @@ def refill_hearts(
 
 
 @achievement_router.get("/achievements", response_model=List[AchievementResponse], summary="List all platform achievements")
-def list_achievements(service: GamificationService = Depends(get_gamification_service)):
-    """Return all available achievements in the platform."""
-    return service.get_all_achievements()
+def list_achievements(
+    category: Optional[str] = None,
+    service: GamificationService = Depends(get_gamification_service),
+):
+    """Return available achievements filtered by category."""
+    return service.get_all_achievements(category=category)
 
 
 @achievement_router.get("/users/me/achievements", response_model=List[UserAchievementResponse], summary="Get current user achievements")
 def get_my_achievements(
+    category: Optional[str] = None,
     current_user: UserModel = Depends(get_current_user),
     service: GamificationService = Depends(get_gamification_service),
 ):
-    """Return all achievements and whether the current demo learner has unlocked each one."""
-    return service.get_user_achievements(current_user)
+    """Return achievements, progress, and unlock status for the current learner."""
+    return service.get_user_achievements(current_user=current_user, category=category)

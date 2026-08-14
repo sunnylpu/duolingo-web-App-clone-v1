@@ -2,20 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { userService } from "@/services/user-service";
-import { achievementService } from "@/services/achievement-service";
 import { courseService } from "@/services/course-service";
-import { UserProfile, UserAchievement, CourseSummary } from "@/types";
+import { UserProfile, CourseSummary } from "@/types";
 import { LoadingState } from "@/components/feedback/LoadingState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import { Card } from "@/components/ui/Card";
 import { StreakDisplay } from "@/components/gamification/StreakDisplay";
 import { DailyActivitySummary } from "@/components/gamification/DailyActivitySummary";
-import { AchievementCard } from "@/features/achievements/components/AchievementCard";
+import { AchievementCenter } from "@/features/achievements";
 import { CourseProgressCard } from "@/features/course";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [achievements, setAchievements] = useState<UserAchievement[]>([]);
   const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,13 +22,11 @@ export default function ProfilePage() {
     setLoading(true);
     setError(null);
     try {
-      const [profileRes, achRes, coursesRes] = await Promise.all([
+      const [profileRes, coursesRes] = await Promise.all([
         userService.getUserProfile(),
-        achievementService.getMyAchievements(),
         courseService.getCourses().catch(() => []),
       ]);
       setProfile(profileRes);
-      setAchievements(achRes);
       setCourses(coursesRes);
     } catch (err: any) {
       setError(err?.message || "Failed to load user profile from backend.");
@@ -121,15 +117,8 @@ export default function ProfilePage() {
         goalCompleted={Boolean(stats.daily_goal_completed || (stats.daily_xp >= stats.daily_goal_xp))}
       />
 
-      {/* Achievements Section */}
-      <div>
-        <h2 className="text-lg font-bold text-gray-200 mb-3">Achievements</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {achievements.map((item) => (
-            <AchievementCard key={item.achievement.id} userAchievement={item} />
-          ))}
-        </div>
-      </div>
+      {/* Advanced Achievement Center */}
+      <AchievementCenter />
     </div>
   );
 }

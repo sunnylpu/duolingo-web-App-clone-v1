@@ -41,8 +41,12 @@ class AchievementResponse(BaseModel):
     name: str
     description: str
     icon: str
+    category: str = "learning"
+    rarity: str = "common"
+    xp_reward: int = 0
     requirement_type: str
     requirement_value: int
+    course_id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -59,10 +59,15 @@ class AchievementModel(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
     icon = Column(String, nullable=False)
+    category = Column(String, default="learning", nullable=False)  # learning, streak, xp, mastery, course, review
     requirement_type = Column(String, nullable=False)
     requirement_value = Column(Integer, nullable=False)
+    course_id = Column(String, ForeignKey("courses.id", ondelete="CASCADE"), nullable=True)
+    rarity = Column(String, default="common", nullable=False)  # common, rare, epic, legendary
+    xp_reward = Column(Integer, default=0, nullable=False)
 
     # Relationships
+    course = relationship("CourseModel")
     user_achievements = relationship(
         "UserAchievementModel",
         back_populates="achievement",

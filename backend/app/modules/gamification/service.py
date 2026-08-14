@@ -8,6 +8,7 @@ from app.modules.gamification.repository import GamificationRepository
 from app.modules.progress.repository import ProgressRepository
 from app.modules.progress.models import DailyActivityModel, LessonAttemptModel
 from app.modules.gamification.models import AchievementModel, UserAchievementModel, UserStatsModel
+from app.modules.gamification.achievements.engine import AchievementEngine
 from app.modules.lesson.models import ExerciseModel
 from app.modules.user.models import UserModel
 from app.modules.gamification.schemas import (
@@ -41,19 +42,14 @@ class GamificationService:
         self.clock = clock or system_clock
         self.repository = GamificationRepository(db)
         self.progress_repository = ProgressRepository(db)
+        self.achievement_engine = AchievementEngine(db)
 
     def refresh_hearts(self, user_id: str) -> UserStatsModel:
-        """
-        Lazy Heart Regeneration Algorithm.
-        Calculates elapsed time and regenerates hearts up to MAX_HEARTS.
-        """
         stats = self.repository.get_user_stats(user_id)
         if not stats:
             raise NotFoundError(f"Gamification stats for user '{user_id}' not found.")
 
         current_time = self.clock.now()
-
-        # Ensure tz-awareness compatibility
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)
 
@@ -168,7 +164,6 @@ class GamificationService:
         return stats.hearts
 
     def get_practice_exercise(self) -> PracticeExerciseResponse:
-        """Returns a lightweight practice exercise from existing pool or default."""
         exercise = self.db.query(ExerciseModel).first()
         if exercise:
             return PracticeExerciseResponse(
@@ -199,7 +194,6 @@ class GamificationService:
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)
 
-        # Enforce Practice Cooldown
         if stats.last_practice_recovery_at:
             last_pract = stats.last_practice_recovery_at
             if last_pract.tzinfo is None:
@@ -210,7 +204,6 @@ class GamificationService:
                     "Practice recovery is temporarily unavailable.", code="PRACTICE_COOLDOWN"
                 )
 
-        # Validate Practice Answer
         exercise = self.db.query(ExerciseModel).filter(ExerciseModel.id == exercise_id).first()
         correct_ans = exercise.correct_answer if exercise else "Hola"
 
@@ -317,104 +310,56 @@ class GamificationService:
             },
         }
 
-    def evaluate_achievements(self, user_id: str, commit: bool = True) -> List[AchievementResponse]:
-        all_achievements = self.db.query(AchievementModel).all()
-        user_earned = self.repository.get_user_achievements(user_id)
-        earned_ids = {ua.achievement_id for ua in user_earned}
-
-        stats = self.repository.get_user_stats(user_id)
-        total_xp = stats.total_xp if stats else 0
-        current_streak = stats.current_streak if stats else 0
-
-        completed_attempts = (
-            self.db.query(LessonAttemptModel)
-            .filter(
-                LessonAttemptModel.user_id == user_id,
-                LessonAttemptModel.status == "completed",
-            )
-            .all()
+    def evaluate_achievements(
+        self, user_id: str, course_id: Optional[str] = None, commit: bool = True
+    ) -> List[AchievementResponse]:
+        newly_earned_models = self.achievement_engine.evaluate_user_achievements(
+            user_id=user_id, course_id=course_id
         )
-        unique_completed_lessons = {a.lesson_id for a in completed_attempts}
-        lessons_completed_count = len(unique_completed_lessons)
-
-        newly_earned: List[AchievementResponse] = []
-
-        for ach in all_achievements:
-            if ach.id in earned_ids:
-                continue
-
-            satisfied = False
-            req_type = ach.requirement_type
-            req_val = ach.requirement_value
-
-            if req_type == "lessons_completed":
-                satisfied = lessons_completed_count >= req_val
-            elif req_type == "total_xp":
-                satisfied = total_xp >= req_val
-            elif req_type == "streak":
-                satisfied = current_streak >= req_val
-
-            if satisfied:
-                ua_id = f"uach_{user_id}_{ach.id}"
-                self.repository.grant_user_achievement(
-                    user_achievement_id=ua_id,
-                    user_id=user_id,
-                    achievement_id=ach.id,
-                )
-                newly_earned.append(AchievementResponse.model_validate(ach))
-
         if commit:
             self.db.commit()
         else:
             self.db.flush()
 
-        return newly_earned
+        return [AchievementResponse.model_validate(ach) for ach in newly_earned_models]
 
-    def get_all_achievements(self) -> List[AchievementResponse]:
-        achievements = self.db.query(AchievementModel).all()
+    def get_all_achievements(self, category: Optional[str] = None) -> List[AchievementResponse]:
+        query = self.db.query(AchievementModel)
+        if category and category.lower() != "all":
+            query = query.filter(AchievementModel.category == category.lower())
+        achievements = query.all()
         return [AchievementResponse.model_validate(a) for a in achievements]
 
-    def get_user_achievements(self, current_user: UserModel) -> List[UserAchievementResponse]:
-        all_achievements = self.db.query(AchievementModel).all()
-        user_earned = self.repository.get_user_achievements(current_user.id)
-        earned_records = {ua.achievement_id: ua.earned_at for ua in user_earned}
-
-        stats = self.repository.get_user_stats(current_user.id)
-        total_xp = stats.total_xp if stats else 0
-        current_streak = stats.current_streak if stats else 0
-
-        completed_attempts = (
-            self.db.query(LessonAttemptModel)
-            .filter(
-                LessonAttemptModel.user_id == current_user.id,
-                LessonAttemptModel.status == "completed",
-            )
-            .all()
+    def get_user_achievements(
+        self, current_user: UserModel, category: Optional[str] = None
+    ) -> List[UserAchievementResponse]:
+        progress_data = self.achievement_engine.get_achievement_progress_for_user(
+            user_id=current_user.id, category=category
         )
-        lessons_completed_count = len({a.lesson_id for a in completed_attempts})
 
         results: List[UserAchievementResponse] = []
-        for ach in all_achievements:
-            is_earned = ach.id in earned_records
-            earned_at = earned_records.get(ach.id)
-
-            curr_val = 0
-            if ach.requirement_type == "lessons_completed":
-                curr_val = lessons_completed_count
-            elif ach.requirement_type == "total_xp":
-                curr_val = total_xp
-            elif ach.requirement_type == "streak":
-                curr_val = current_streak
-
-            progress_val = ach.requirement_value if is_earned else min(curr_val, ach.requirement_value)
-
+        for item in progress_data:
+            ach_resp = AchievementResponse(
+                id=item["id"],
+                code=item["code"],
+                name=item["name"],
+                description=item["description"],
+                icon=item["icon"],
+                category=item["category"],
+                rarity=item["rarity"],
+                xp_reward=item["xp_reward"],
+                requirement_type=item["requirement_type"],
+                requirement_value=item["requirement_value"],
+                course_id=item["course_id"],
+            )
             results.append(
                 UserAchievementResponse(
-                    achievement=AchievementResponse.model_validate(ach),
-                    is_earned=is_earned,
-                    earned_at=earned_at,
-                    progress=progress_val,
-                    target=ach.requirement_value,
+                    achievement=ach_resp,
+                    is_earned=item["earned"],
+                    earned_at=item["earned_at"],
+                    progress=item["current_value"],
+                    target=item["target_value"],
                 )
             )
+
         return results
